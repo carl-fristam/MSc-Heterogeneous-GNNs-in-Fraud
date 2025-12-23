@@ -1,0 +1,28 @@
+# --- DATA & BINARIES ---
+# Ignore all CSVs, Pickles, and Numpy files everywhere
+*.csv
+*.pkl
+*.npy
+*.npz
+*.pt
+*.h5
+
+# Specific large folders
+data/**
+references/**/data/
+outputs/
+models/
+
+# --- ENVIRONMENT ---
+venv/
+.venv/
+bin/
+lib/
+include/
+
+# --- IDE & SYSTEM ---
+.DS_Store
+.vscode/
+.ipynb_checkpoints/
+__pycache__/
+*.log
