@@ -4,6 +4,8 @@ Investigating GNNs and HGMAE, among other things. AML. MSc at Copenhagen Busines
 
 ## Sources:
 
+
+
 **FUSE seems relevant. Lot of focus on semi-supervised learning, and reference to papers on this topic.**
 FUSE: Fast Semi-Supervised Node Embedding Learning via Structural and Label-Aware Optimization (Chakraborty et al., 2024): https://arxiv.org/html/2510.11250v1
 
