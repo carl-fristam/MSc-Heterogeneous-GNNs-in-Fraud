@@ -23,6 +23,30 @@ include/
 # --- IDE & SYSTEM ---
 .DS_Store
 .vscode/
+.idea/
 .ipynb_checkpoints/
 __pycache__/
 *.log
+*.pyc
+*.pyo
+*.pyd
+
+# --- EXPERIMENT TRACKING ---
+wandb/
+runs/
+tensorboard/
+mlruns/
+
+# --- OUTPUTS ---
+*.png
+*.jpg
+*.pdf
+!docs/*.png
+!docs/*.jpg
+!docs/*.pdf
+
+# --- TEMPORARY FILES ---
+*.swp
+*.swo
+*~
+.cache/
