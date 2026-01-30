@@ -1,6 +1,13 @@
 # AML-GNNs-and-HGMAE
 Investigating GNNs and HGMAE, among other things. AML. MSc at Copenhagen Business School.
 
+## Dataset Setup
+
+This project uses the [Synthetic Transaction Monitoring Dataset (SAML-D)](https://www.kaggle.com/datasets/berkanoztas/synthetic-transaction-monitoring-dataset-aml) from Kaggle.
+
+```bash
+python datasets/kaggle-download.py
+```
 
 ## Sources:
 
