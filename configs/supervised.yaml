@@ -1,0 +1,16 @@
+models_to_run:
+  - XGBoost
+  # - LogisticRegression
+  # - RandomForest
+
+resample:
+  strategy: null   # null, smote, undersample, smote_tomek
+  ratio: 0.1
+
+pos_weight: null   # null = auto-compute, or manual value like 100
+
+threshold:
+  tune: true
+  target_metric: 0.9  # "f1" for max F1, or float for target recall
+
+show_plots: true

@@ -45,6 +45,10 @@ mlruns/
 !docs/*.jpg
 !docs/*.pdf
 
+# --- RESULTS ---
+# Allow markdown result logs in results/
+!results/**/*.md
+
 # --- TEMPORARY FILES ---
 *.swp
 *.swo

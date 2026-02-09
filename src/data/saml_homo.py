@@ -27,9 +27,12 @@ from tqdm import tqdm
 import pickle
 import os
 
+from src.utils.config import PROJECT_ROOT
 
-def load_and_prepare_saml_data(data_path='../data/SAML-D.csv', sample_ratio=1.0,
-                                cache_path='data/processed/saml_graph.pkl',
+
+def load_and_prepare_saml_data(data_path=str(PROJECT_ROOT / 'datasets' / 'SAML-D.csv'),
+                                sample_ratio=1.0,
+                                cache_path=str(PROJECT_ROOT / 'data' / 'processed' / 'saml_graph.pkl'),
                                 use_cache=True):
     """
     Load SAML-D CSV and create PyG Data object.
