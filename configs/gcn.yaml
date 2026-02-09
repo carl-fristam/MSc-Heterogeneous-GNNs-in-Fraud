@@ -1,0 +1,16 @@
+model:
+  hidden_dim: 64
+  num_layers: 2
+  dropout: 0.3
+  out_channels: 2
+
+training:
+  num_epochs: 200
+  lr: 0.005
+  weight_decay: 5.0e-4
+  patience: 20
+  use_class_weights: true
+
+data:
+  cache_path: data/processed/saml_graph.pkl
+  sample_ratio: 1.0

@@ -6,14 +6,14 @@ import torch
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-import sys
 import os
 
-# Add src to path for imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from gcn_model import GCN, compute_class_weights, evaluate_model, print_metrics, create_splits
-from data.saml_data import load_graph
+from src.baselines.gcn.model import GCN
+from src.data.saml_homo import load_graph
+from src.utils.class_weights import compute_class_weights
+from src.utils.evaluation import compute_metrics, print_metrics, create_splits
+from src.utils.device import get_device
+from src.utils.config import PROJECT_ROOT
 
 
 def train_epoch(model, data, train_mask, optimizer, criterion, device):
@@ -100,8 +100,8 @@ def train_gcn(data, device, num_epochs=200, hidden_dim=64, num_layers=2,
         train_loss = train_epoch(model, data, train_mask, optimizer, criterion, device)
 
         # Evaluate
-        train_metrics = evaluate_model(model, data, train_mask, device)
-        val_metrics = evaluate_model(model, data, val_mask, device)
+        train_metrics = compute_metrics(model, data, train_mask, device)
+        val_metrics = compute_metrics(model, data, val_mask, device)
 
         # Update scheduler
         scheduler.step(val_metrics['f1'])
@@ -139,9 +139,9 @@ def train_gcn(data, device, num_epochs=200, hidden_dim=64, num_layers=2,
     print("Training Complete - Final Evaluation")
     print(f"{'='*60}")
 
-    train_metrics = evaluate_model(model, data, train_mask, device)
-    val_metrics = evaluate_model(model, data, val_mask, device)
-    test_metrics = evaluate_model(model, data, test_mask, device)
+    train_metrics = compute_metrics(model, data, train_mask, device)
+    val_metrics = compute_metrics(model, data, val_mask, device)
+    test_metrics = compute_metrics(model, data, test_mask, device)
 
     print_metrics(train_metrics, "Train")
     print_metrics(val_metrics, "Validation")
@@ -152,17 +152,16 @@ def train_gcn(data, device, num_epochs=200, hidden_dim=64, num_layers=2,
 
 def main():
     """Main training function."""
-    # Check for GPU
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
     print(f"Using device: {device}")
 
     # Load preprocessed graph
     print("\nLoading graph data...")
-    cache_path = 'data/processed/saml_graph.pkl'
+    cache_path = str(PROJECT_ROOT / 'data' / 'processed' / 'saml_graph.pkl')
 
     if not os.path.exists(cache_path):
         print(f"Error: {cache_path} not found")
-        print("Please run saml_data.py first to create the preprocessed graph")
+        print("Please run saml_homo.py first to create the preprocessed graph")
         return
 
     data, account_mapping = load_graph(cache_path)
@@ -192,7 +191,7 @@ def main():
     )
 
     # Save model
-    model_path = 'src/models/gcn_saml.pt'
+    model_path = str(PROJECT_ROOT / 'models' / 'gcn_saml.pt')
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     torch.save({
         'model_state_dict': model.state_dict(),
