@@ -40,10 +40,10 @@ mlruns/
 # --- OUTPUTS ---
 *.png
 *.jpg
-*.pdf
+*[Ss][Ee][Nn][Ss][Ii][Tt][Ii][Vv][Ee]*.pdf
+!*.pdf
 !docs/*.png
 !docs/*.jpg
-!docs/*.pdf
 
 # --- RESULTS ---
 # Allow markdown result logs in results/
