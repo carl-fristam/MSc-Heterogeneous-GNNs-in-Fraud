@@ -18,10 +18,24 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.hgmae.train import train
+from src.utils.config import load_config
+
+
+def _flatten(d, out=None):
+    """Recursively flatten nested config dict into a single-level dict."""
+    if out is None:
+        out = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            _flatten(v, out)
+        else:
+            out[k] = v
+    return out
 
 
 def build_args():
     parser = argparse.ArgumentParser(description="HGMAE pre-training on SAML-D")
+    parser.set_defaults(**_flatten(load_config("hgmae")))
 
     # Data
     parser.add_argument("--sample_ratio", type=float, default=1.0,
