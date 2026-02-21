@@ -21,10 +21,23 @@ from src.hgmae.premodel_adapter import PreModelPyG
 from src.hgmae.load_data import load_saml_for_hgmae
 from src.hgmae.visualize import plot_umap
 from src.utils.device import get_device
+from src.utils.config import load_config
+
+
+def _flatten(d, out=None):
+    if out is None:
+        out = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            _flatten(v, out)
+        else:
+            out[k] = v
+    return out
 
 
 def build_args():
     parser = argparse.ArgumentParser()
+    parser.set_defaults(**_flatten(load_config("hgmae")))
     parser.add_argument("--sample_ratio", type=float, default=1.0)
     parser.add_argument("--use_cache",    action="store_true", default=True)
     parser.add_argument("--mae_epochs",   type=int,   default=200)
