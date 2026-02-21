@@ -90,6 +90,7 @@ traitlets==5.14.3
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.3
+umap-learn==0.5.7
 urllib3==2.6.2
 wcwidth==0.2.14
 wheel==0.45.1
