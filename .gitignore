@@ -8,6 +8,7 @@
 *.h5
 
 # Specific large folders
+datasets/SAML-D.csv
 data/**
 references/**/data/
 outputs/
@@ -41,9 +42,6 @@ mlruns/
 *.png
 *.jpg
 *[Ss][Ee][Nn][Ss][Ii][Tt][Ii][Vv][Ee]*.pdf
-!*.pdf
-!docs/*.png
-!docs/*.jpg
 
 # --- RESULTS ---
 # Allow markdown result logs in results/

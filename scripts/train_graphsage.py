@@ -1,7 +1,5 @@
-"""Entry point for GraphSAGE training."""
-
-from src.utils.compat import apply_pyg_compat_patch
-apply_pyg_compat_patch()
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.baselines.graphsage.main import main
 

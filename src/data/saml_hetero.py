@@ -132,38 +132,38 @@ def _build_edges_for_type(df, account_to_id):
         1: Hour of day (0-23, normalized)
         2: Is cross-border (sender_bank != receiver_bank)
         3: Is same currency (payment_currency == received_currency)
-        4: Is laundering (label)
+
+    Note: Is_laundering is intentionally excluded — it is the label and
+    including it as an edge feature would cause data leakage.
     """
-    edge_list = []
-    edge_features = []
+    # Vectorised account ID lookup — avoids slow iterrows() on 9.5M rows
+    sender_ids = df['Sender_account'].astype(str).map(account_to_id)
+    receiver_ids = df['Receiver_account'].astype(str).map(account_to_id)
 
-    for _, row in df.iterrows():
-        sender = str(row['Sender_account'])
-        receiver = str(row['Receiver_account'])
+    # Drop rows where either account is not in the mapping
+    valid = sender_ids.notna() & receiver_ids.notna()
+    sender_ids = sender_ids[valid].astype(int)
+    receiver_ids = receiver_ids[valid].astype(int)
+    df = df[valid]
 
-        if sender not in account_to_id or receiver not in account_to_id:
-            continue
+    edge_index = torch.tensor(
+        np.stack([sender_ids.values, receiver_ids.values], axis=0), dtype=torch.long
+    )
 
-        edge_list.append([account_to_id[sender], account_to_id[receiver]])
+    hour = df['Time'].str.split(':').str[0].astype(float, errors='ignore').fillna(0) / 23.0
+    is_cross_border = (df['Sender_bank_location'] != df['Receiver_bank_location']).astype(float)
+    is_same_currency = (df['Payment_currency'] == df['Received_currency']).astype(float)
 
-        # Edge features
-        amount = row['Amount']
-        hour = int(row['Time'].split(':')[0]) if isinstance(row['Time'], str) else 0
-        is_cross_border = float(row['Sender_bank_location'] != row['Receiver_bank_location'])
-        is_same_currency = float(row['Payment_currency'] == row['Received_currency'])
-        is_laundering = float(row['Is_laundering'])
-
-        edge_features.append([amount, hour / 23.0, is_cross_border, is_same_currency, is_laundering])
-
-    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
-    edge_attr = torch.tensor(edge_features, dtype=torch.float)
+    edge_attr = torch.tensor(
+        np.stack([df['Amount'].values, hour.values, is_cross_border.values, is_same_currency.values], axis=1),
+        dtype=torch.float
+    )
 
     # Normalize amount (first feature)
     if edge_attr.shape[0] > 0:
-        amount_mean = edge_attr[:, 0].mean()
         amount_std = edge_attr[:, 0].std()
         if amount_std > 0:
-            edge_attr[:, 0] = (edge_attr[:, 0] - amount_mean) / amount_std
+            edge_attr[:, 0] = (edge_attr[:, 0] - edge_attr[:, 0].mean()) / amount_std
 
     return edge_index, edge_attr
 
