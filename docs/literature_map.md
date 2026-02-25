@@ -129,15 +129,7 @@
 - **Summary:** Comprehensive review of 100+ studies on GNNs for financial fraud detection. Taxonomy of approaches, real-world deployment considerations, design factors, limitations.
 - **Relevance:** ✅ Core — key survey for literature review chapter
 
-### [14] Financial Fraud Detection Using Graph Neural Networks: A Systematic Review
-- **Authors:** (fetch failed — ScienceDirect blocked)
-- **Year:** ~2024
-- **Venue:** Expert Systems with Applications (Elsevier)
-- **URL:** https://www.sciencedirect.com/science/article/pii/S0957417423026581
-- **Summary:** Systematic review of GNNs for financial fraud detection.
-- **Relevance:** ✅ Core — systematic review in a top journal
-
-### [15] Machine Learning for AML in Banking: Advanced Techniques, Models, and Real-World Case Studies
+### [14] Machine Learning for AML in Banking: Advanced Techniques, Models, and Real-World Case Studies
 - **Authors:** Mohit Kumar Sahu
 - **Year:** 2020
 - **Venue:** Journal of Science & Technology, Vol. 1 No. 1
@@ -145,7 +137,7 @@
 - **Summary:** Broad overview of supervised/unsupervised/RL for AML. Feature engineering, case studies, human-in-the-loop, interpretability, bias mitigation.
 - **Relevance:** ⚪ Secondary — broad ML context, low-tier journal
 
-### [16] Innovative Fraud Detection in Financial Transactions Using Deep Learning and SHAP Analysis
+### [15] Innovative Fraud Detection in Financial Transactions Using Deep Learning and SHAP Analysis
 - **Authors:** Naresh Kumar Bathala, T. S. Sasikala, V. Sita Rama Prasad, S. Sheik Faritha Begum, Upasana Mahajan, Vaitla Sreedevi
 - **Year:** 2024
 - **Venue:** ICOFE-2024 / SSRN 5083759
@@ -153,7 +145,7 @@
 - **Summary:** Feed-forward neural network on synthetic tabular transaction data (amount, time, user/merchant ID). SHAP for feature importance. **Not graph-based** — purely tabular deep learning + XAI.
 - **Relevance:** ⚪ Peripheral — no graph component; only relevant if citing SHAP/XAI for fraud as contrast to graph approaches
 
-### [17] AI-Powered Fraud Detection in Financial Services: GNN, Compliance Challenges, and Risk Mitigation
+### [16] AI-Powered Fraud Detection in Financial Services: GNN, Compliance Challenges, and Risk Mitigation
 - **Authors:** Diego Vallarino
 - **Year:** 2025
 - **Venue:** SSRN 5170054
@@ -165,7 +157,7 @@
 
 ## 6 · Knowledge Graphs & Infrastructure
 
-### [18] Enhancing Anti-Money Laundering Systems Using Knowledge Graphs and GNNs
+### [17] Enhancing Anti-Money Laundering Systems Using Knowledge Graphs and GNNs
 - **Authors:** (3rd Intl. Conf. on Financial Technology and Business Analysis, 2024)
 - **Year:** 2024
 - **Venue:** ResearchGate
@@ -173,7 +165,7 @@
 - **Summary:** Constructs knowledge graphs from financial data. Applies GCN and GAT. GAT encounters overfitting on larger test sets. Transaction timestamps and payment formats are critical features.
 - **Relevance:** ✅ Relevant — KG + GNN intersection, GAT performance issues worth noting
 
-### [19] Knowledge Graphs for Anti-Money Laundering and Transaction Monitoring
+### [18] Knowledge Graphs for Anti-Money Laundering and Transaction Monitoring
 - **Authors:** Rob Chang (FI Consulting)
 - **Year:** 2023
 - **Venue:** FI Consulting (white paper)
@@ -181,7 +173,7 @@
 - **Summary:** Knowledge graphs for AML with clustering and label propagation. References 2018 Joint Statement from federal regulators encouraging AI for AML.
 - **Relevance:** ⚪ Secondary — practitioner perspective, clustering + label propagation baselines
 
-### [20] Recommendations on Implementing an Investigation Knowledge Graph to Combat Illicit Money Flows
+### [19] Recommendations on Implementing an Investigation Knowledge Graph to Combat Illicit Money Flows
 - **Authors:** TRACE Project (EU Horizon 2020)
 - **Year:** 2024
 - **Venue:** TRACE EU Policy Brief
@@ -189,7 +181,7 @@
 - **Summary:** Policy brief on KG technology for law enforcement. AI-driven crime analytics, geographic risk assessment, cross-border coordination.
 - **Relevance:** ⚪ Secondary — policy/regulatory context
 
-### [21] AML Knowledge Graphs — Facctum
+### [20] AML Knowledge Graphs — Facctum
 - **Authors:** Facctum (company)
 - **Year:** —
 - **Venue:** Company glossary
@@ -197,7 +189,7 @@
 - **Summary:** Definitions and foundational concepts of knowledge graphs in financial compliance.
 - **Relevance:** ⚪ Peripheral — industry terminology reference only
 
-### [22] Unmasking Money-Laundering Gangs with AI and Graph Databases
+### [21] Unmasking Money-Laundering Gangs with AI and Graph Databases
 - **Authors:** Michael Down (Neo4j)
 - **Year:** 2025
 - **Venue:** Machine.news
@@ -209,7 +201,7 @@
 
 ## 7 · Explainability & Interpretability
 
-### [23] Machine Learning in Transaction Monitoring: The Prospect of xAI
+### [22] Machine Learning in Transaction Monitoring: The Prospect of xAI
 - **Authors:** Julie Gerlings, Ioanna Constantiou
 - **Year:** 2023
 - **Venue:** HICSS-56 (CBS Research)
@@ -217,7 +209,7 @@
 - **Summary:** How ML automation/augmentation affects Transaction Monitoring. xAI requirements depend on the liable party. Context-relatable explanations support auditing and diminish investigator bias.
 - **Relevance:** ✅ Core — CBS paper, key for discussion on xAI requirements for regulatory acceptance
 
-### [24] Explainable Artificial Intelligence for Anti-Money Laundering
+### [23] Explainable Artificial Intelligence for Anti-Money Laundering
 - **Authors:** SAS Institute
 - **Year:** 2025
 - **Venue:** SAS White Paper
@@ -225,7 +217,7 @@
 - **Summary:** XAI techniques address black-box ML models for AML. Practical guidance for transparent, compliant systems.
 - **Relevance:** ⚪ Secondary — vendor perspective, supports discussion section
 
-### [25] Machine Learning in AML: Ongoing Monitoring that Learns and Adapts
+### [24] Machine Learning in AML: Ongoing Monitoring that Learns and Adapts
 - **Authors:** AML Watcher
 - **Year:** 2025
 - **Venue:** AML Watcher (industry)
@@ -237,7 +229,7 @@
 
 ## 8 · Peripheral / Tooling
 
-### [26] GraphNeT: Graph Neural Networks for Neutrino Telescope Event Reconstruction
+### [25] GraphNeT: Graph Neural Networks for Neutrino Telescope Event Reconstruction
 - **Authors:** Søgaard, A., Ørsøe, R., Holm, M., et al.
 - **Year:** 2023
 - **Venue:** JOSS
@@ -245,7 +237,7 @@
 - **Summary:** Open-source GNN framework — design patterns, not AML-specific.
 - **Relevance:** ⚪ Peripheral — framework design patterns only
 
-### [27–28] Git/GitHub workflow references
+### [26–27] Git/GitHub workflow references
 - Leveraging Git & GitHub — **URL:** https://dbbrunson.com
 - Collaborating on a Paper (Rob Moss) — **URL:** https://git-is-my-lab-book.net
 - **Relevance:** ⚪ Peripheral — research methodology/tooling
