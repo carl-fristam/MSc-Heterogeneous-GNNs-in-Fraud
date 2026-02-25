@@ -1,0 +1,19 @@
+model:
+  hidden_dim: 128
+  latent_dim: 32
+  num_heads: 4
+  encoder_dropout: 0.2
+  decoder_dropout: 0.1
+  beta: 0.001          # KL divergence weight
+
+training:
+  epochs: 300
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  patience: 30
+  scheduler: true
+
+data:
+  sample_ratio: 0.1    # ~950K transactions; set to 1.0 for final runs
+  n_days: null          # alternative: temporal window (overrides sample_ratio)
+  use_cache: true
