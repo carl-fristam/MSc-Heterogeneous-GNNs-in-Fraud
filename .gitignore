@@ -1,6 +1,7 @@
 # --- DATA & BINARIES ---
 # Ignore all CSVs, Pickles, and Numpy files everywhere
 *.csv
+!docs/literature.csv
 *.pkl
 *.npy
 *.npz
