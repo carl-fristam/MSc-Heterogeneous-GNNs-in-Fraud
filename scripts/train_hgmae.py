@@ -41,6 +41,9 @@ def build_args():
     parser.add_argument("--sample_ratio", type=float, default=1.0,
                         help="Fraction of SAML-D to use (0.01 for quick test)")
     parser.add_argument("--use_cache",    action="store_true", default=True)
+    parser.add_argument("--graph_version", type=str, default="v1",
+                        choices=["v1", "v2"],
+                        help="v1=account-level, v2=transaction-level bipartite")
 
     # Model architecture
     parser.add_argument("--encoder",       type=str,   default="han")

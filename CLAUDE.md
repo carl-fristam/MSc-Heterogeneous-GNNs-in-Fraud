@@ -8,17 +8,21 @@ MSc thesis (CBS) — GNNs and Heterogeneous Graph Masked Autoencoders (HGMAE) fo
 source .venv/bin/activate              # Environment
 python scripts/prepare_data.py --all   # Build graph caches (data/processed/)
 python scripts/train_<model>.py        # Train: gcn | graphsage | hmpnn | hgmae | supervised
+python scripts/train_tabular_ae.py     # Tabular autoencoder baseline (no graph)
+python scripts/train_hgmae.py --graph_version v2 --sample_ratio 0.05 --visualize  # HGMAE on transaction-level graph
 ```
 
 ## Layout
 
 - `configs/*.yaml` — experiment hyperparameters, loaded via `load_config("name")`
 - `scripts/` — CLI entry points (one per model + `prepare_data.py`)
-- `src/data/` — SAML-D graph loaders (homogeneous & heterogeneous)
+- `src/data/` — SAML-D graph loaders (homogeneous, heterogeneous v1, bipartite v2)
 - `src/baselines/` — GCN, GraphSAGE (homogeneous node classification)
 - `src/supervised/` — XGBoost, RF, LR tabular baselines
 - `src/hmpnn/` — Heterogeneous MPNN (NNConv + edge features)
-- `src/hgmae/` — HGMAE self-supervised pretraining; custom PyG-native HAN encoder (`han_pyg.py`) + DGL-stubbed adapter (`premodel_adapter.py`) wrapping reference HGMAE code
+- `src/autoencoder/` — VGAE (variational graph autoencoder) with GATConv attention weights
+- `src/tabular_ae/` — Tabular autoencoder baseline (no graph structure)
+- `src/hgmae/` — HGMAE self-supervised pretraining; v1 (account-level) and v2 (transaction-level) modes; custom PyG-native HAN encoder (`han_pyg.py`) + DGL-stubbed adapter (`premodel_adapter.py`)
 - `src/utils/` — shared: device selection, metrics, class weights, config, PyG compat patch
 - `src/references/` — vendored reference implementations (read-only)
 

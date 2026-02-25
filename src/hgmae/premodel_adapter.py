@@ -103,6 +103,9 @@ class PreModelPyG(PreModel):
         # Let reference code build everything: mask token, loss fns, projections
         super().__init__(args, num_metapath, focused_feature_dim)
 
+        # Node type for HANPyG: "account" (v1) or "transaction" (v2)
+        node_type = getattr(args, "node_type", "account")
+
         # HANConv (PyG) outputs `out_channels` directly — heads are pooled internally,
         # NOT concatenated like DGL's GAT. The reference assumed concat (16 * 4 = 64),
         # so we target hidden_dim straight to keep encoder_to_decoder(64→64) intact.
@@ -131,6 +134,7 @@ class PreModelPyG(PreModel):
             norm=create_norm(args.norm),
             concat_out=True,
             encoding=True,
+            node_type=node_type,
         )
 
         # Replace decoder with PyG HAN (1 layer, no activation — standard MAE decoder)
@@ -151,6 +155,7 @@ class PreModelPyG(PreModel):
                 norm=create_norm(args.norm),
                 concat_out=True,
                 encoding=False,
+                node_type=node_type,
             )
 
     def mps_to_gs(self, mps: List[Tensor]) -> List[Tensor]:

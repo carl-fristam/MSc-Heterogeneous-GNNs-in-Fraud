@@ -23,6 +23,7 @@ import numpy as np
 
 from src.hgmae.premodel_adapter import PreModelPyG
 from src.hgmae.load_data import load_saml_for_hgmae
+from src.hgmae.load_data_v2 import load_saml_v2_for_hgmae
 from src.utils.device import get_device
 
 
@@ -33,10 +34,21 @@ def train(args):
     # ------------------------------------------------------------------
     # Data
     # ------------------------------------------------------------------
-    feats, mps, label, idx_train, idx_val, idx_test = load_saml_for_hgmae(
-        sample_ratio=getattr(args, "sample_ratio", 1.0),
-        use_cache=getattr(args, "use_cache", True),
-    )
+    graph_version = getattr(args, "graph_version", "v1")
+    if graph_version == "v2":
+        print("Using v2 bipartite graph (transaction-level)")
+        args.node_type = "transaction"
+        feats, mps, label, idx_train, idx_val, idx_test = load_saml_v2_for_hgmae(
+            sample_ratio=getattr(args, "sample_ratio", 0.10),
+            use_cache=getattr(args, "use_cache", True),
+        )
+    else:
+        print("Using v1 account-level graph")
+        args.node_type = "account"
+        feats, mps, label, idx_train, idx_val, idx_test = load_saml_for_hgmae(
+            sample_ratio=getattr(args, "sample_ratio", 1.0),
+            use_cache=getattr(args, "use_cache", True),
+        )
 
     feats = [f.to(device) for f in feats]
     mps   = [mp.to(device) for mp in mps]
