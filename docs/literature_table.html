@@ -66,13 +66,13 @@
 
   /* Column widths */
   th:nth-child(1), td:nth-child(1) { width: 30px; text-align: center; }
-  th:nth-child(2), td:nth-child(2) { width: 26%; }
-  th:nth-child(3), td:nth-child(3) { width: 140px; }
-  th:nth-child(4), td:nth-child(4) { width: 18%; }
-  th:nth-child(5), td:nth-child(5) { width: 40px; text-align: center; }
-  th:nth-child(6), td:nth-child(6) { width: 80px; }
-  th:nth-child(7), td:nth-child(7) { } /* summary takes remaining */
-  th:nth-child(8), td:nth-child(8) { width: 60px; text-align: center; }
+  th:nth-child(2), td:nth-child(2) { width: 24%; }
+  th:nth-child(3), td:nth-child(3) { width: 180px; }
+  th:nth-child(4), td:nth-child(4) { width: 12%; }
+  th:nth-child(5), td:nth-child(5) { width: 50px; text-align: center; }
+  th:nth-child(6), td:nth-child(6) { width: 85px; text-align: center;}
+  th:nth-child(7), td:nth-child(7) { width: 100px; text-align: center;}
+  th:nth-child(8), td:nth-child(8) { } /* summary takes remaining */
 
   /* Relevance badges */
   .badge {
@@ -99,11 +99,42 @@
     white-space: nowrap;
   }
 
+  /* Search */
+  .search-bar { margin-bottom: 10px; }
+  .search-bar input {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+  }
+  .search-bar input:focus { border-color: var(--accent); }
+  .search-bar input::placeholder { color: var(--text-dim); }
+
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
   .pdf-link { color: var(--core); font-size: 11px; }
   .no-pdf { color: var(--peripheral); font-size: 11px; }
+
+  /* Status dropdown */
+  select.status-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-size: 11px;
+    cursor: pointer;
+    width: 80px;
+  }
+  select.status-select:focus { outline: none; border-color: var(--accent); }
+  select.status-select[data-status="Done"]    { border-color: var(--core);       color: var(--core); }
+  select.status-select[data-status="Reading"] { border-color: var(--relevant);   color: var(--relevant); }
+  select.status-select[data-status="Skipped"] { border-color: var(--peripheral); color: var(--peripheral); }
 
   /* Stats bar */
   .stats {
@@ -112,8 +143,10 @@
     margin-bottom: 12px;
     font-size: 12px;
     color: var(--text-dim);
+    flex-wrap: wrap;
   }
   .stats span { color: var(--text); font-weight: 600; }
+  .stats .progress { color: var(--core); }
 </style>
 </head>
 <body>
@@ -122,12 +155,17 @@
 <div class="subtitle">MSc Thesis (CBS) — click column headers to sort, use filters to narrow</div>
 
 <div class="stats">
-  Total: <span id="stat-total">27</span> &nbsp;|&nbsp;
+  Total: <span id="stat-total">28</span> &nbsp;|&nbsp;
   Core: <span id="stat-core">0</span> &nbsp;|&nbsp;
   Relevant: <span id="stat-relevant">0</span> &nbsp;|&nbsp;
   Secondary: <span id="stat-secondary">0</span> &nbsp;|&nbsp;
   Peripheral: <span id="stat-peripheral">0</span> &nbsp;|&nbsp;
-  Showing: <span id="stat-showing">0</span>
+  Showing: <span id="stat-showing">0</span> &nbsp;|&nbsp;
+  Read: <span id="stat-done" class="progress">0</span> / <span id="stat-total2">0</span>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="search" placeholder="Search titles, authors, summaries..." />
 </div>
 
 <div class="filters">
@@ -141,6 +179,7 @@
   <button data-filter="Explainability">XAI</button>
   <button data-filter="Peripheral">Peripheral</button>
   <button data-filter="core-only" style="margin-left:auto; border-color:var(--core);">Core only</button>
+  <button data-filter="unread-only" style="border-color:var(--relevant);">Unread</button>
 </div>
 
 <table>
@@ -152,6 +191,7 @@
       <th data-col="authors">Authors<span class="sort-arrow"></span></th>
       <th data-col="year">Year<span class="sort-arrow"></span></th>
       <th data-col="relevance">Relevance<span class="sort-arrow"></span></th>
+      <th data-col="status">Status<span class="sort-arrow"></span></th>
       <th data-col="summary">Summary</th>
     </tr>
   </thead>
@@ -159,69 +199,127 @@
 </table>
 
 <script>
-const DATA = [
-  {num:1, title:"Heterogeneous Graph Transformer (HGT)", section:"Foundational Graph Methods", authors:"Hu, Dong, Wang, Sun", year:2020, url:"https://arxiv.org/abs/2003.01332", pdf:"HU ET AL..pdf", summary:"Attention-based architecture for heterogeneous graphs. Node- and edge-type-dependent attention. Foundation for HAN/HGMAE.", relevance:"Core"},
-  {num:2, title:"Heterogeneous Graph Masked Autoencoders (HGMAE)", section:"Foundational Graph Methods", authors:"Tian, Dong, Zhang, Zhang, Chawla", year:2022, url:"https://arxiv.org/abs/2208.09957", pdf:"TIAN ET AL..pdf", summary:"Self-supervised pretraining on heterogeneous graphs via masked autoencoding. Our primary method.", relevance:"Core"},
-  {num:3, title:"Finding Money Launderers Using Heterogeneous GNNs", section:"Heterogeneous GNNs for AML", authors:"Johannessen, Jullum", year:2023, url:"https://arxiv.org/abs/2307.13499", pdf:"Finding_Money_Launderers_Using_Heterogeneous_GNNs_Johannessen_and_Jullum_2023.pdf", summary:"First GNN on large-scale real-world heterogeneous bank data (DNB, Norway). Novel edge-aggregation.", relevance:"Core"},
-  {num:4, title:"Heterogeneous Graph Auto-Encoder for Credit Card Fraud", section:"Heterogeneous GNNs for AML", authors:"Singh, Prasad, Michael, Kaphungkui, Singh", year:2024, url:"https://arxiv.org/abs/2410.08121", pdf:"Heterogeneous_Graph_Auto-Encoder_for_Fraud_Detection_Singh_et_al_2024.pdf", summary:"Heterogeneous graph + autoencoder. AUC-PR 0.89, F1 0.81. Same tripartite topology as ours.", relevance:"Core"},
-  {num:5, title:"Anti-Money Laundering by Group-Aware Deep Graph Learning", section:"Heterogeneous GNNs for AML", authors:"Liu, Zuo, Zhu, Yin, Zhang", year:2023, url:"https://www.ijraset.com/research-paper/anti-money-laundering-by-group-aware-deep-graph-learning", pdf:"", summary:"Community-centric encoder for gang-level laundering detection. Tested on real bank card alliance data.", relevance:"Relevant"},
-  {num:6, title:"AML Alert Optimization Using ML with Graphs", section:"Heterogeneous GNNs for AML", authors:"Naser Eddin, Bono, Aparicio, Polido, Ascensao, Bizarro, Ribeiro", year:2021, url:"https://arxiv.org/abs/2112.07508", pdf:"AML_Alert_Optimization_Using_ML_with_Graphs_Naser_Eddin_et_al_2021.pdf", summary:"Entity-centric + graph features for AML alert triage. 80% FP reduction, >90% TP on real data.", relevance:"Core"},
-  {num:7, title:"Powerful GNNs for Money Laundering Detection", section:"Heterogeneous GNNs for AML", authors:"Stan", year:2024, url:"https://studenttheses.uu.nl/bitstream/handle/20.500.12932/50600/thesis_Stan.pdf", pdf:"Powerful_GNNs_for_Money_Laundering_Detection_Stan_2024.pdf", summary:"GNNs on ~1M node / ~9M edge AMLSim data. Ego IDs, heterogeneous message passing, port numbering.", relevance:"Core"},
-  {num:8, title:"AML Technology Based on Graph Attention (TAGA)", section:"Temporal & Hybrid", authors:"Zhang, Zhu, Zhang, Chen, Lan", year:2025, url:"https://www.spiedigitallibrary.org/conference-proceedings-of-spie/13511/135111T/Research-on-anti-money-laundering-technology-based-on-graph-attention/10.1117/12.3056070.full", pdf:"", summary:"TAGA (Temporal Aware Graph Attention) + VAE for temporal encoding on crypto transactions.", relevance:"Relevant"},
-  {num:9, title:"Detecting and Preventing Money Laundering Using Deep Learning", section:"Temporal & Hybrid", authors:"(Int. American University)", year:2025, url:"https://thesai.org/Downloads/Volume16No6/Paper_1-Detecting_and_Preventing_Money_Laundering.pdf", pdf:"Detecting_and_Preventing_Money_Laundering_Using_Deep_Learning_IJACSA_2025.pdf", summary:"Hybrid LSTM-GraphSAGE. 95.4% accuracy on simulated data.", relevance:"Relevant"},
-  {num:10, title:"LaundroGraph: Self-Supervised Graph Learning for AML", section:"Self-Supervised", authors:"Cardoso, Saleiro, Bizarro", year:2022, url:"https://arxiv.org/abs/2210.14360", pdf:"LaundroGraph_Self-Supervised_Graph_Learning_for_AML_Cardoso_et_al_2022.pdf", summary:"First fully self-supervised AML system. Bipartite graph + link prediction. +12pp AUC.", relevance:"Core"},
-  {num:11, title:"Privacy-Aware Graph Embeddings for AML Pipelines", section:"Self-Supervised", authors:"Paladugu", year:2025, url:"https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5320964", pdf:"", summary:"GNNs + homomorphic encryption for privacy-preserving AML.", relevance:"Secondary"},
-  {num:12, title:"Advances in Continual Graph Learning for AML", section:"Self-Supervised", authors:"Deprez, Wei, Verbeke, Baesens, Mets, Verdonck", year:2025, url:"https://arxiv.org/abs/2503.24259", pdf:"Advances_in_Continual_Graph_Learning_for_AML_Deprez_et_al_2025.pdf", summary:"Continual learning for GNN-based AML. Replay, regularization, architecture strategies.", relevance:"Relevant"},
-  {num:13, title:"GNNs for Financial Fraud Detection: A Review", section:"Surveys & Reviews", authors:"Cheng, Zou, Xiang, Jiang", year:2024, url:"https://arxiv.org/abs/2411.05815", pdf:"GNNs_for_Financial_Fraud_Detection_A_Review_Cheng_et_al_2024.pdf", summary:"Comprehensive review of 100+ GNN studies for financial fraud.", relevance:"Core"},
-  {num:14, title:"ML for AML in Banking: Techniques and Case Studies", section:"Surveys & Reviews", authors:"Sahu", year:2020, url:"https://thesciencebrigade.com/jst/article/view/352", pdf:"", summary:"Broad ML-for-AML overview. Low-tier journal.", relevance:"Secondary"},
-  {num:15, title:"Fraud Detection Using Deep Learning and SHAP Analysis", section:"Surveys & Reviews", authors:"Bathala, Sasikala, et al.", year:2024, url:"https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5083759", pdf:"", summary:"Tabular feed-forward NN + SHAP. Not graph-based.", relevance:"Peripheral"},
-  {num:16, title:"AI-Powered Fraud Detection: GNN, Compliance, Risk", section:"Surveys & Reviews", authors:"Vallarino", year:2025, url:"https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5170054", pdf:"", summary:"GNN fraud detection. Compliance/risk focus.", relevance:"Secondary"},
-  {num:17, title:"Enhancing AML Systems Using Knowledge Graphs and GNNs", section:"Knowledge Graphs", authors:"(FinTech Conf. 2024)", year:2024, url:"https://www.researchgate.net/publication/387449610", pdf:"", summary:"KG + GCN/GAT for AML. GAT overfitting issues. Timestamps critical.", relevance:"Relevant"},
-  {num:18, title:"Knowledge Graphs for AML and Transaction Monitoring", section:"Knowledge Graphs", authors:"Chang (FI Consulting)", year:2023, url:"https://ficonsulting.com/insight-post/knowledge-graphs-for-anti-money-laundering-and-transaction-monitoring/", pdf:"", summary:"KGs with clustering and label propagation for AML.", relevance:"Secondary"},
-  {num:19, title:"Implementing an Investigation KG for Illicit Money Flows", section:"Knowledge Graphs", authors:"TRACE Project (EU)", year:2024, url:"https://trace-illicit-money-flows.eu/recommendations-on-implementing-an-investigation-knowledge-graph-to-combat-illicit-money-flows/", pdf:"", summary:"EU policy brief on KG for law enforcement.", relevance:"Secondary"},
-  {num:20, title:"AML Knowledge Graphs", section:"Knowledge Graphs", authors:"Facctum", year:null, url:"https://www.facctum.com/terms/aml-knowledge-graphs", pdf:"", summary:"Definitions of KGs in financial compliance.", relevance:"Peripheral"},
-  {num:21, title:"Unmasking Money-Laundering Gangs with AI and Graph DBs", section:"Knowledge Graphs", authors:"Down (Neo4j)", year:2025, url:"https://www.machine.news/unmasking-shadowy-crime-rings-with-ai-and-graph-databases/", pdf:"", summary:"Graph databases for AML. Panama Papers. Cross-institution challenge.", relevance:"Secondary"},
-  {num:22, title:"ML in Transaction Monitoring: The Prospect of xAI", section:"Explainability", authors:"Gerlings, Constantiou", year:2023, url:"https://research.cbs.dk/en/publications/machine-learning-in-transaction-monitoring-the-prospect-of-xai", pdf:"ML_in_Transaction_Monitoring_The_Prospect_of_xAI_Gerlings_and_Constantiou_2023.pdf", summary:"xAI requirements depend on liable party in TM. CBS paper.", relevance:"Core"},
-  {num:23, title:"Explainable AI for Anti-Money Laundering", section:"Explainability", authors:"SAS Institute", year:2025, url:"https://www.sas.com/en/whitepapers/explainable-artificial-intelligence-for-anti-money-laundering.html", pdf:"", summary:"XAI for black-box ML in AML. Vendor white paper.", relevance:"Secondary"},
-  {num:24, title:"ML in AML: Ongoing Monitoring that Learns and Adapts", section:"Explainability", authors:"AML Watcher", year:2025, url:"https://amlwatcher.com/machine-learning-in-aml/", pdf:"", summary:"LIME for flagged transactions. Active learning, human-in-the-loop.", relevance:"Peripheral"},
-  {num:25, title:"GraphNeT: GNNs for Neutrino Telescope Reconstruction", section:"Peripheral", authors:"Sogaard, Orsoe, Holm, et al.", year:2023, url:"https://joss.theoj.org/papers/10.21105/joss.04971", pdf:"", summary:"Open-source GNN framework. Design patterns only.", relevance:"Peripheral"},
-  {num:26, title:"Leveraging Git & GitHub", section:"Peripheral", authors:"dbbrunson.com", year:null, url:"https://dbbrunson.com", pdf:"", summary:"Git/GitHub workflow guide.", relevance:"Peripheral"},
-  {num:27, title:"Collaborating on a Paper", section:"Peripheral", authors:"Rob Moss", year:null, url:"https://git-is-my-lab-book.net", pdf:"", summary:"LaTeX/Git workflow for thesis writing.", relevance:"Peripheral"},
-];
-
+const LS_KEY = 'lit-status';
+let DATA = [];
 const tbody = document.getElementById('tbody');
-let sortCol = 'num', sortAsc = true, activeFilter = 'all';
+let sortCol = 'num', sortAsc = true, activeFilter = 'all', searchQuery = '';
+
+// --- Persist status in localStorage ---
+function loadStatuses() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
+}
+function saveStatus(num, value) {
+  const s = loadStatuses();
+  s[num] = value;
+  localStorage.setItem(LS_KEY, JSON.stringify(s));
+}
+
+// --- CSV parser (handles quoted fields with commas) ---
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = parseLine(lines[0]);
+  return lines.slice(1).map(line => {
+    const vals = parseLine(line);
+    const obj = {};
+    headers.forEach((h, i) => obj[h.trim()] = (vals[i]||'').trim());
+    return obj;
+  });
+}
+function parseLine(line) {
+  const result = []; let current = ''; let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+    else { current += ch; }
+  }
+  result.push(current);
+  return result;
+}
+
+// --- Load CSV then init ---
+fetch('literature.csv')
+  .then(r => r.text())
+  .then(text => {
+    const rows = parseCSV(text);
+    const saved = loadStatuses();
+    DATA = rows.map(r => ({
+      num: parseInt(r['#']) || 0,
+      title: r['Title'] || '',
+      section: r['Section'] || '',
+      authors: r['Authors'] || '',
+      year: r['Year'] ? parseInt(r['Year']) : null,
+      url: r['URL'] || '',
+      summary: r['Summary'] || '',
+      relevance: r['Relevance'] || 'Secondary',
+      status: saved[parseInt(r['#'])] || 'Unread',
+    }));
+    initUI();
+    render(getFiltered());
+  })
+  .catch(err => {
+    tbody.innerHTML = `<tr><td colspan="8" style="color:#f44;padding:20px;">Failed to load literature.csv — open this file via a local server or Live Server extension.<br><code>${err}</code></td></tr>`;
+  });
 
 function relevanceBadge(r) {
   const cls = {Core:'badge-core',Relevant:'badge-relevant',Secondary:'badge-secondary',Peripheral:'badge-peripheral'}[r]||'badge-secondary';
   return `<span class="badge ${cls}">${r}</span>`;
 }
 
+function statusSelect(d) {
+  const opts = ['Unread','Reading','Done','Skipped'];
+  const options = opts.map(o => `<option${o===d.status?' selected':''}>${o}</option>`).join('');
+  return `<select class="status-select" data-num="${d.num}" data-status="${d.status}">${options}</select>`;
+}
+
 function render(data) {
-  tbody.innerHTML = data.map(d => `<tr data-section="${d.section}" data-relevance="${d.relevance}">
+  tbody.innerHTML = data.map(d => `<tr data-section="${d.section}" data-relevance="${d.relevance}" data-status="${d.status}">
     <td>${d.num}</td>
     <td><a href="${d.url}" target="_blank">${d.title}</a></td>
     <td><span class="section-pill">${d.section}</span></td>
     <td>${d.authors}</td>
     <td>${d.year||'—'}</td>
     <td>${relevanceBadge(d.relevance)}</td>
+    <td>${statusSelect(d)}</td>
     <td>${d.summary}</td>
   </tr>`).join('');
+
+  // Attach change listeners to dropdowns
+  tbody.querySelectorAll('select.status-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const num = parseInt(sel.dataset.num);
+      const value = sel.value;
+      saveStatus(num, value);
+      sel.dataset.status = value;
+      const row = DATA.find(d => d.num === num);
+      if (row) row.status = value;
+      if (activeFilter === 'unread-only') render(getFiltered());
+      else updateStats(getFiltered());
+    });
+  });
+
   updateStats(data);
 }
 
 function updateStats(data) {
   document.getElementById('stat-total').textContent = DATA.length;
+  document.getElementById('stat-total2').textContent = DATA.length;
   document.getElementById('stat-core').textContent = DATA.filter(d=>d.relevance==='Core').length;
   document.getElementById('stat-relevant').textContent = DATA.filter(d=>d.relevance==='Relevant').length;
   document.getElementById('stat-secondary').textContent = DATA.filter(d=>d.relevance==='Secondary').length;
   document.getElementById('stat-peripheral').textContent = DATA.filter(d=>d.relevance==='Peripheral').length;
   document.getElementById('stat-showing').textContent = data.length;
+  document.getElementById('stat-done').textContent = DATA.filter(d=>d.status==='Done').length;
 }
 
 function getFiltered() {
   let d = [...DATA];
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    d = d.filter(r => r.title.toLowerCase().includes(q) || r.authors.toLowerCase().includes(q) || r.summary.toLowerCase().includes(q));
+  }
   if (activeFilter === 'core-only') d = d.filter(r => r.relevance === 'Core');
+  else if (activeFilter === 'unread-only') d = d.filter(r => r.status === 'Unread');
   else if (activeFilter !== 'all') d = d.filter(r => r.section.includes(activeFilter));
   d.sort((a,b) => {
     let va = a[sortCol], vb = b[sortCol];
@@ -233,27 +331,31 @@ function getFiltered() {
   return d;
 }
 
-// Sort
-document.querySelectorAll('th[data-col]').forEach(th => {
-  th.addEventListener('click', () => {
-    const col = th.dataset.col;
-    if (sortCol === col) sortAsc = !sortAsc;
-    else { sortCol = col; sortAsc = true; }
+function initUI() {
+  // Sort
+  document.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (sortCol === col) sortAsc = !sortAsc;
+      else { sortCol = col; sortAsc = true; }
+      render(getFiltered());
+    });
+  });
+  // Filter
+  document.querySelectorAll('.filters button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.filter;
+      render(getFiltered());
+    });
+  });
+  // Search
+  document.getElementById('search').addEventListener('input', (e) => {
+    searchQuery = e.target.value;
     render(getFiltered());
   });
-});
-
-// Filter
-document.querySelectorAll('.filters button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeFilter = btn.dataset.filter;
-    render(getFiltered());
-  });
-});
-
-render(getFiltered());
+}
 </script>
 </body>
 </html>
