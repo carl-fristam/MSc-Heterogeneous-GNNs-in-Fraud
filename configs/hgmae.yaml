@@ -45,3 +45,4 @@ training:
 data:
   sample_ratio: 1.0
   use_cache: true
+  graph_version: v1    # v1 = account-level, v2 = transaction-level bipartite

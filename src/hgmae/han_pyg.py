@@ -27,11 +27,11 @@ from torch_geometric.nn import HANConv
 # hgmae.utils is from the reference code — available via sys.path set in premodel_adapter.py.
 # Import lazily inside __init__ if this module is ever used standalone.
 try:
-    from hgmae.utils import create_activation
+    from hgmae.utils import create_activation  # type: ignore[import-not-found]
 except ImportError:
     import sys, os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../references/HGMAE"))
-    from hgmae.utils import create_activation
+    from hgmae.utils import create_activation  # type: ignore[import-not-found]
 
 
 class HANPyG(nn.Module):
@@ -62,6 +62,7 @@ class HANPyG(nn.Module):
         norm,
         concat_out: bool = False,
         encoding: bool = False,
+        node_type: str = "account",
     ):
         super().__init__()
 
@@ -69,13 +70,12 @@ class HANPyG(nn.Module):
         self.encoding = encoding
 
         # One synthetic edge type per metapath — named mp_0, mp_1, ...
-        # All connect "account" → "account" since SAML-D has one node type.
-        # For richer schemas, pass node/edge type info in from outside.
-        self._node_type = "account"
+        # node_type defaults to "account" (v1) but can be "transaction" (v2).
+        self._node_type = node_type
         self._edge_types = [
-            ("account", f"mp_{i}", "account") for i in range(num_metapath)
+            (node_type, f"mp_{i}", node_type) for i in range(num_metapath)
         ]
-        metadata = (["account"], self._edge_types)
+        metadata = ([node_type], self._edge_types)
 
         self.han_layers = nn.ModuleList()
         self.norms = nn.ModuleList()
