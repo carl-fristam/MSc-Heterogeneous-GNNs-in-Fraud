@@ -10,6 +10,11 @@ python scripts/prepare_data.py --all   # Build graph caches (data/processed/)
 python scripts/train_<model>.py        # Train: gcn | graphsage | hmpnn | hgmae | supervised
 python scripts/train_tabular_ae.py     # Tabular autoencoder baseline (no graph)
 python scripts/train_hgmae.py --graph_version v2 --sample_ratio 0.05 --visualize  # HGMAE on transaction-level graph
+
+# Graph pipeline (new — temporal split, extensible features)
+python -c "from src.utils.config import load_config; from src.graph_pipeline import build_graph; build_graph(load_config('graph_pipeline'))"
+python -c "from src.graph_pipeline import print_feature_inventory; print_feature_inventory()"  # Feature sanity check
+python scripts/visualize_graph.py        # 4-panel graph visualization
 ```
 
 ## Layout
@@ -23,6 +28,7 @@ python scripts/train_hgmae.py --graph_version v2 --sample_ratio 0.05 --visualize
 - `src/autoencoder/` — VGAE (variational graph autoencoder) with GATConv attention weights
 - `src/tabular_ae/` — Tabular autoencoder baseline (no graph structure)
 - `src/hgmae/` — HGMAE self-supervised pretraining; v1 (account-level) and v2 (transaction-level) modes; custom PyG-native HAN encoder (`han_pyg.py`) + DGL-stubbed adapter (`premodel_adapter.py`)
+- `src/graph_pipeline/` — **new** extensible graph construction pipeline (temporal split, feature registry, schema adapter for SAML-D → bank data)
 - `src/utils/` — shared: device selection, metrics, class weights, config, PyG compat patch
 - `src/references/` — vendored reference implementations (read-only)
 
