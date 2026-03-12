@@ -40,13 +40,18 @@ ID_PATTERNS = [
     "id", "_id", "id_", "uuid", "key", "code", "no", "num", "number",
     "account", "acct", "user", "customer", "client", "merchant", "sender",
     "receiver", "recipient", "party", "entity", "node",
+    "counterparty", "counter", "device", "transaction", "agent", "branch",
 ]
 
-AMOUNT_PATTERNS = ["amount", "value", "sum", "total", "price", "fee", "balance", "cost"]
-TIMESTAMP_PATTERNS = ["date", "time", "datetime", "timestamp", "at", "created", "updated", "when"]
-LABEL_PATTERNS = ["label", "fraud", "target", "is_fraud", "y", "class", "flag", "laundering", "illicit", "suspicious", "anomaly"]
-TYPE_PATTERNS = ["type", "category", "kind", "channel", "method", "currency", "currency_code", "status"]
-GEO_PATTERNS = ["country", "city", "region", "location", "address", "zip", "lat", "lon", "longitude", "latitude"]
+AMOUNT_PATTERNS = ["amount", "value", "sum", "total", "price", "fee", "balance", "cost", "basevalue"]
+TIMESTAMP_PATTERNS = ["date", "time", "datetime", "timestamp", "at", "created", "updated", "when", "eventtime"]
+LABEL_PATTERNS = ["label", "fraud", "target", "is_fraud", "y", "class", "flag", "laundering", "illicit", "suspicious", "anomaly",
+                  "confirmed_risk", "confirmedrisk", "confirmed risk", "risk"]
+TYPE_PATTERNS = ["type", "category", "kind", "channel", "method", "submethod", "currency", "currency_code", "status",
+                 "clearing", "format", "idformat", "msgstatus", "exceptionrule"]
+GEO_PATTERNS = ["country", "city", "region", "location", "address", "zip", "lat", "lon", "longitude", "latitude",
+                "destinationcountry", "agentcountry"]
+DEVICE_PATTERNS = ["device", "ipaddress", "useragent", "ip_address", "user_agent"]
 
 
 def column_role(col: str, series: pd.Series) -> dict:
@@ -121,8 +126,9 @@ def detect_node_types(meta: dict[str, dict]) -> list[dict]:
         return a, b
 
     senders, receivers = find_pair(id_cols,
-        ["sender", "source", "from", "origin", "payer", "debtor"],
-        ["receiver", "target", "to", "dest", "payee", "creditor", "beneficiary"])
+        ["sender", "source", "from", "origin", "payer", "debtor", "accountid", "account"],
+        ["receiver", "target", "to", "dest", "payee", "creditor", "beneficiary",
+         "counterpartyid", "counterparty", "counterentityid"])
 
     if senders and receivers:
         suggestions.append({
@@ -263,7 +269,7 @@ def run_eda(path: Path, sample: int | None, out: Path | None):
                     emit(info(f"Transactions per day (approx): {len(valid)/span.days:.1f}"))
 
         elif "LABEL" in m["roles"]:
-            vc = s.value_counts(dropna=False)
+            vc = s.value_counts(dropna=False).head(20)
             total = len(s)
             for val, cnt in vc.items():
                 bar = "█" * int(30 * cnt / total)
@@ -281,8 +287,9 @@ def run_eda(path: Path, sample: int | None, out: Path | None):
                 emit(ok("Near-unique → good primary key / node ID candidate"))
             else:
                 emit(warn("Not near-unique → may be a foreign key / repeated entity"))
-            sample_vals = s.dropna().astype(str).head(5).tolist()
-            emit(info(f"Sample values: {sample_vals}"))
+            # only show samples for low-cardinality IDs (e.g. account type codes)
+            if m["n_unique"] <= 50:
+                emit(info(f"Values: {top_values(s, n=10)}"))
 
         elif pd.api.types.is_numeric_dtype(s):
             emit(info(describe_numeric(s)))
@@ -293,9 +300,12 @@ def run_eda(path: Path, sample: int | None, out: Path | None):
             if negatives > 0:
                 emit(warn(f"Negative values: {negatives:,} ({100*negatives/len(s):.1f}%)"))
 
-        elif "CATEGORICAL" in m["roles"] or s.dtype == object:
+        elif "CATEGORICAL" in m["roles"] and m["n_unique"] <= 500:
             emit(info(f"Cardinality: {m['n_unique']:,}"))
             emit(info(f"Top values: {top_values(s)}"))
+
+        elif s.dtype == object and m["n_unique"] > 500:
+            emit(info(f"High-cardinality text/ID column ({m['n_unique']:,} unique) — skipping value listing"))
 
     # ── Correlations between numeric columns ──────────────────────────────────
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
@@ -329,6 +339,95 @@ def run_eda(path: Path, sample: int | None, out: Path | None):
         emit(warn(f"Duplicate rows: {n_dupes:,} ({100*n_dupes/len(df):.2f}%)"))
     else:
         emit(ok("No duplicate rows"))
+
+    # ── Internal vs External node analysis ───────────────────────────────────
+    emit(h1("INTERNAL vs EXTERNAL ENTITY ANALYSIS"))
+    _c = {c.upper(): c for c in df.columns}  # uppercase lookup
+
+    # Sender / receiver ID columns (best guesses)
+    sender_col   = next((c for k, c in _c.items() if k in ("ACCOUNTID", "SENDERID", "SOURCEID")), None)
+    receiver_col = next((c for k, c in _c.items() if k in ("COUNTERPARTYID", "RECEIVERID", "DESTID", "COUNTERENTITYID")), None)
+    onus_col     = next((c for k, c in _c.items() if k in ("TRANSACTIONONUS", "ONUS", "INTERNAL")), None)
+    sagent_col   = next((c for k, c in _c.items() if k in ("ACCOUNTAGENTID", "SENDERAGENTID", "SOURCEAGENTID")), None)
+    cagent_col   = next((c for k, c in _c.items() if k in ("COUNTERAGENTID", "RECEIVERAGENTID")), None)
+    customer_col = next((c for k, c in _c.items() if k in ("CUSTOMERID", "CUSTOMERENTITYID")), None)
+    label_col_found = next((c for k, c in _c.items() if any(p in k.lower() for p in LABEL_PATTERNS)), None)
+
+    if sender_col and receiver_col:
+        sender_ids   = set(df[sender_col].dropna().unique())
+        receiver_ids = set(df[receiver_col].dropna().unique())
+        overlap      = sender_ids & receiver_ids
+        only_sender  = sender_ids - receiver_ids
+        only_receiver= receiver_ids - sender_ids
+
+        emit(h2("Account pool overlap"))
+        emit(info(f"Unique senders   ({sender_col}):   {len(sender_ids):,}"))
+        emit(info(f"Unique receivers ({receiver_col}): {len(receiver_ids):,}"))
+        emit(info(f"Appear as BOTH sender & receiver:  {len(overlap):,}  "
+                  f"({100*len(overlap)/max(len(sender_ids|receiver_ids),1):.1f}% of all accounts)"))
+        emit(info(f"Only ever sender:   {len(only_sender):,}"))
+        emit(info(f"Only ever receiver: {len(only_receiver):,}"))
+
+        if len(overlap) / max(len(sender_ids | receiver_ids), 1) > 0.3:
+            emit(flag("High overlap → unified account node pool is appropriate"))
+        else:
+            emit(warn("Low overlap → sender and receiver populations are distinct; "
+                      "consider separate node types (e.g. internal vs external)"))
+
+    if onus_col:
+        emit(h2(f"On-us flag  ({onus_col})"))
+        vc = df[onus_col].value_counts(dropna=False)
+        total = len(df)
+        for val, cnt in vc.items():
+            bar = "█" * int(30 * cnt / total)
+            emit(info(f"  {str(val):<10} {cnt:>8,}  ({100*cnt/total:.1f}%)  {bar}"))
+        n_internal = vc.get(True, vc.get("true", vc.get("True", vc.get(1, 0))))
+        n_external = total - n_internal
+        emit(flag(f"~{n_internal:,} internal (on-us) transactions  |  ~{n_external:,} external"))
+        emit(info("Internal = both accounts at the same bank → denser subgraph"))
+        emit(info("External = counterparty is an outside bank → sparser, higher AML risk signal"))
+
+        if label_col_found and pd.api.types.is_numeric_dtype(df[label_col_found]):
+            emit(h2(f"Fraud rate by on-us flag"))
+            grouped = df.groupby(onus_col)[label_col_found].mean()
+            for val, rate in grouped.items():
+                bar = "█" * int(rate * 200)
+                emit(info(f"  {str(val):<10}  fraud rate = {rate:.4f}  {R if rate > 0.01 else DIM}{bar}{X}"))
+
+    if sagent_col and cagent_col:
+        emit(h2(f"Agent (bank) diversity  ({sagent_col} vs {cagent_col})"))
+        emit(info(f"Unique sender agents:   {df[sagent_col].nunique():,}"))
+        emit(info(f"Unique receiver agents: {df[cagent_col].nunique():,}"))
+        cross = df[df[sagent_col] != df[cagent_col]]
+        emit(info(f"Cross-bank transactions: {len(cross):,}  ({100*len(cross)/len(df):.1f}%)"))
+        emit(info(f"Top receiver agents: {top_values(df[cagent_col], n=5)}"))
+
+    if customer_col and sender_col:
+        emit(h2(f"Customer ↔ Account linkage  ({customer_col})"))
+        n_customers = df[customer_col].nunique()
+        n_accounts  = df[sender_col].nunique()
+        ratio = n_accounts / max(n_customers, 1)
+        emit(info(f"Unique customers: {n_customers:,}"))
+        emit(info(f"Unique accounts:  {n_accounts:,}"))
+        emit(info(f"Accounts per customer (avg): {ratio:.2f}"))
+        if ratio > 1.1:
+            emit(flag("Multi-account customers present → Customer node type adds value"))
+        else:
+            emit(info("Mostly 1-to-1 customer↔account → Customer node may be redundant"))
+
+    emit(h2("Homogeneous vs Heterogeneous recommendation"))
+    emit(info("HOMOGENEOUS  — use if:"))
+    emit(info("  · Only one meaningful entity type (e.g. all nodes are accounts/customers)"))
+    emit(info("  · No rich per-type features; internal/external split is negligible"))
+    emit(info("  · Simplicity is preferred; baseline model"))
+    emit("")
+    emit(info("HETEROGENEOUS — use if:"))
+    emit(info("  · Distinct node types with different feature spaces"))
+    emit(info("    e.g. Account (IBAN features) vs Customer (type, country) vs Device (IP, UA)"))
+    emit(info("  · Internal vs external accounts have structurally different connectivity"))
+    emit(info("  · You want to model Customer→Account→Transaction as separate relation types"))
+    emit(info("  · Evidence: low sender/receiver overlap, significant cross-bank volume,"))
+    emit(info("    or multi-account customers above"))
 
     # ── Graph schema suggestions ──────────────────────────────────────────────
     emit(h1("HETEROGENEOUS GRAPH SCHEMA SUGGESTIONS"))
