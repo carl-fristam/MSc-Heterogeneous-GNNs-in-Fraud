@@ -260,13 +260,16 @@ def run_eda(path: Path, sample: int | None, out: Path | None):
         emit(h3(f"{col}  [{roles_str}]  ({null_info})"))
 
         if "TIMESTAMP" in m["roles"] or pd.api.types.is_datetime64_any_dtype(s):
-            valid = s.dropna()
+            valid = pd.to_datetime(s, errors="coerce").dropna()
             if len(valid):
-                emit(info(f"Range: {valid.min()} → {valid.max()}"))
-                span = valid.max() - valid.min()
-                emit(info(f"Span:  {span}"))
-                if hasattr(span, 'days') and span.days > 0:
-                    emit(info(f"Transactions per day (approx): {len(valid)/span.days:.1f}"))
+                try:
+                    emit(info(f"Range: {valid.min()} → {valid.max()}"))
+                    span = valid.max() - valid.min()
+                    emit(info(f"Span:  {span}"))
+                    if hasattr(span, 'days') and span.days > 0:
+                        emit(info(f"Transactions per day (approx): {len(valid)/span.days:.1f}"))
+                except Exception as e:
+                    emit(warn(f"Could not compute date range: {e}"))
 
         elif "LABEL" in m["roles"]:
             vc = s.value_counts(dropna=False).head(20)
