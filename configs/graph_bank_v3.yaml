@@ -1,0 +1,120 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Variant 3 — Device nodes added (V1 topology + device linkage)
+#
+# Hypothesis: device-linkage connectivity reveals multi-account fraud rings
+# that are invisible in transaction-only graphs.
+#
+# A Device node connects InternalAccount nodes that share the same device,
+# even when they never directly transact with each other.
+# DEVICEID has 475k unique values, no nulls — good coverage.
+#
+# Note: only InternalAccount nodes have DEVICEID (sender's device).
+#       ExternalAccount nodes do not appear as senders, so no device edges.
+# ─────────────────────────────────────────────────────────────────────────────
+
+variant: v3
+data_path: datasets/bank_transactions.parquet
+sample_ratio: 1.0
+
+split:
+  method: temporal
+  train_end: "2023-04-01"
+  val_end:   "2023-06-01"
+
+cache:
+  enabled: true
+  dir: data/processed/bank
+
+columns:
+  sender:    ACCOUNTID
+  receiver:  COUNTERENTITYID
+  timestamp: EVENTTIME
+  label:     CONFIRMED_RISK
+  onus_flag: TRANSACTIONONUS
+  device:    DEVICEID
+  customer_type: CUSTOMERTYPE
+  sender_bank:   ACCOUNTAGENTID
+  receiver_bank: COUNTERAGENTID
+  channel:       CHANNEL
+  method:        PAYMENTMETHOD
+  submethod:     PAYMENTSUBMETHOD
+  clearing:      PAYMENTCLEARING
+  value:         VALUE
+  base_value:    BASEVALUE
+  currency:      CURRENCY
+  base_currency: BASECURRENCY
+  intl_flag:     INTERNATIONALFLAG
+  drop:
+    - COUNTERPARTYID
+    - ACCOUNTENTITYID
+    - CUSTOMERENTITYID
+    - DEVICEENTITYID
+    - CUSTOMERID
+    - MSGSTATUS
+    - ACCOUNTIDFORMAT
+    - COUNTERIDFORMAT
+    - ACCOUNTBRANCHID
+    - COUNTERBRANCHID
+    - EXCEPTIONRULE
+
+nodes:
+  internal_account:
+    id_col: ACCOUNTID
+    features:
+      - out_degree
+      - amount_stats
+      - counterparty_diversity
+      - device_diversity
+      - channel_diversity
+      - time_behavior
+      - customer_type_ohe
+
+  external_account:
+    id_col: COUNTERENTITYID
+    exclude_if_sender: true
+    features:
+      - in_degree
+      - received_amount_stats
+      - sender_diversity
+      - sender_bank_diversity
+
+  device:
+    id_col: DEVICEID
+    features:
+      - device_tx_count       # total transactions through this device
+      - device_acct_diversity # nunique ACCOUNTID (accounts using this device)
+
+edges:
+  features:
+    - log_value
+    - log_base_value
+    - currency_mismatch
+    - channel_ohe
+    - method_ohe
+    - submethod_ohe
+    - clearing_express
+    - international_flag
+    - time_encoding
+
+  relations:
+    # Same transaction edges as V1
+    - name: onus_transfer
+      src:  internal_account
+      dst:  internal_account
+      filter: "TRANSACTIONONUS == True"
+
+    - name: external_transfer
+      src:  internal_account
+      dst:  external_account
+      filter: "TRANSACTIONONUS == False"
+
+    # Device linkage edges — structural only, no label, no transaction features
+    - name: uses_device
+      src:     internal_account
+      dst:     device
+      src_col: ACCOUNTID        # override: use these cols instead of sender/receiver
+      dst_col: DEVICEID
+      has_label: false
+      features: []              # pure structural edges, no edge attributes
+      # Deduplicated: one edge per unique (ACCOUNTID, DEVICEID) pair
+      deduplicate: true

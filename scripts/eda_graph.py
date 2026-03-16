@@ -119,22 +119,30 @@ def detect_node_types(meta: dict[str, dict]) -> list[dict]:
 
     suggestions = []
 
-    # Pair detection: look for sender/receiver, source/target, from/to patterns
-    def find_pair(cols, patterns_a, patterns_b):
-        a = [c for c in cols if any(p in c.lower() for p in patterns_a)]
-        b = [c for c in cols if any(p in c.lower() for p in patterns_b)]
-        return a, b
+    # Pair detection: pick the single best sender and receiver column by priority
+    SENDER_PRIORITY   = ["senderid", "sourceid", "accountid", "sender", "source", "from", "origin", "payer", "debtor", "account"]
+    RECEIVER_PRIORITY = ["receiverid", "destid", "counterpartyid", "counterentityid", "counterparty",
+                         "receiver", "target", "to", "dest", "payee", "creditor", "beneficiary"]
 
-    senders, receivers = find_pair(id_cols,
-        ["sender", "source", "from", "origin", "payer", "debtor", "accountid", "account"],
-        ["receiver", "target", "to", "dest", "payee", "creditor", "beneficiary",
-         "counterpartyid", "counterparty", "counterentityid"])
+    def best_match(cols, priority):
+        for pat in priority:
+            for c in cols:
+                if pat == c.lower().replace("_", "") or pat in c.lower():
+                    return c
+        return None
 
-    if senders and receivers:
+    best_sender   = best_match(id_cols, SENDER_PRIORITY)
+    best_receiver = best_match(id_cols, RECEIVER_PRIORITY)
+
+    # Avoid picking the same column for both
+    if best_sender and best_receiver and best_sender == best_receiver:
+        best_receiver = None
+
+    if best_sender and best_receiver:
         suggestions.append({
             "pattern": "BIPARTITE_TRANSACTION",
-            "sender_cols": senders,
-            "receiver_cols": receivers,
+            "sender_cols": [best_sender],
+            "receiver_cols": [best_receiver],
             "edge_table": True,
             "label_cols": label_cols,
             "timestamp_cols": timestamp_cols,

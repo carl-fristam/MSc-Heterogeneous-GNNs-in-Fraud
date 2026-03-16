@@ -1,0 +1,118 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Variant 1 — Baseline: onus / external (2 edge types)
+#
+# Hypothesis: internal/external structural split alone improves edge
+# classification over a homogeneous baseline.
+# ─────────────────────────────────────────────────────────────────────────────
+
+variant: v1
+data_path: datasets/bank_transactions.parquet   # .csv also supported
+sample_ratio: 1.0                               # 0.01 for dev
+
+split:
+  method: temporal
+  train_end: "2023-04-01"
+  val_end:   "2023-06-01"
+
+cache:
+  enabled: true
+  dir: data/processed/bank
+
+# ── Column roles ──────────────────────────────────────────────────────────────
+columns:
+  sender:    ACCOUNTID
+  receiver:  COUNTERENTITYID
+  timestamp: EVENTTIME
+  label:     CONFIRMED_RISK
+  onus_flag: TRANSACTIONONUS     # true = on-us (both accounts at same bank)
+  device:    DEVICEID
+  customer_type: CUSTOMERTYPE
+  sender_bank:   ACCOUNTAGENTID
+  receiver_bank: COUNTERAGENTID
+  channel:       CHANNEL
+  method:        PAYMENTMETHOD
+  submethod:     PAYMENTSUBMETHOD
+  clearing:      PAYMENTCLEARING
+  value:         VALUE
+  base_value:    BASEVALUE
+  currency:      CURRENCY
+  base_currency: BASECURRENCY
+  intl_flag:     INTERNATIONALFLAG
+
+  # Dropped: redundant, zero-variance, or leaky
+  # COUNTERPARTYID      — identical to COUNTERENTITYID
+  # ACCOUNTENTITYID     — coarser legal entity ID, subsumed by ACCOUNTID
+  # CUSTOMERENTITYID    — coarser legal entity ID
+  # DEVICEENTITYID      — redundant with DEVICEID
+  # CUSTOMERID          — near 1:1 with ACCOUNTID; no Customer node type
+  # MSGSTATUS           — only value is "new"; zero variance
+  # ACCOUNTIDFORMAT     — format metadata, not predictive
+  # COUNTERIDFORMAT     — format metadata, not predictive
+  # ACCOUNTBRANCHID     — subsumed by ACCOUNTAGENTID
+  # COUNTERBRANCHID     — subsumed by COUNTERAGENTID
+  # EXCEPTIONRULE       — leakage risk: may be set during fraud investigation
+  # IPADDRESS           — null count unknown; defer
+  # USERAGENTSTRING     — very high cardinality, noisy; defer
+  drop:
+    - COUNTERPARTYID
+    - ACCOUNTENTITYID
+    - CUSTOMERENTITYID
+    - DEVICEENTITYID
+    - CUSTOMERID
+    - MSGSTATUS
+    - ACCOUNTIDFORMAT
+    - COUNTERIDFORMAT
+    - ACCOUNTBRANCHID
+    - COUNTERBRANCHID
+    - EXCEPTIONRULE
+
+# ── Node types ────────────────────────────────────────────────────────────────
+nodes:
+  internal_account:
+    id_col: ACCOUNTID
+    # Features computed from training transactions where this account = sender.
+    # All aggregations are train-only to prevent temporal leakage.
+    features:
+      - out_degree              # number of transactions sent
+      - amount_stats            # mean, std, total of VALUE (sent)
+      - counterparty_diversity  # nunique receivers
+      - device_diversity        # nunique DEVICEID (AML signal)
+      - channel_diversity       # nunique CHANNEL used
+      - time_behavior           # night ratio, weekend ratio
+      - customer_type_ohe       # OHE of CUSTOMERTYPE
+
+  external_account:
+    id_col: COUNTERENTITYID
+    exclude_if_sender: true     # only IDs that never appear as ACCOUNTID
+    # Features computed from training transactions where this account = receiver
+    # and TRANSACTIONONUS = False.
+    features:
+      - in_degree               # number of transactions received
+      - received_amount_stats   # mean, std of VALUE (received)
+      - sender_diversity        # nunique sending accounts
+      - sender_bank_diversity   # nunique COUNTERAGENTID (banks sending to this account)
+
+# ── Edge types ────────────────────────────────────────────────────────────────
+edges:
+  # Edge features applied to ALL relation types
+  features:
+    - log_value           # log1p(VALUE), z-scored
+    - log_base_value      # log1p(BASEVALUE), z-scored
+    - currency_mismatch   # binary: CURRENCY != BASECURRENCY
+    - channel_ohe         # OHE CHANNEL (vocab from training data)
+    - method_ohe          # OHE PAYMENTMETHOD (online / file / bulk)
+    - submethod_ohe       # OHE PAYMENTSUBMETHOD (7 values)
+    - clearing_express    # binary: PAYMENTCLEARING != 'default'
+    - international_flag  # INTERNATIONALFLAG as float
+    - time_encoding       # sin/cos hour-of-day + day-of-week (4 dims)
+
+  relations:
+    - name: onus_transfer
+      src:  internal_account
+      dst:  internal_account
+      filter: "TRANSACTIONONUS == True"
+
+    - name: external_transfer
+      src:  internal_account
+      dst:  external_account
+      filter: "TRANSACTIONONUS == False"
