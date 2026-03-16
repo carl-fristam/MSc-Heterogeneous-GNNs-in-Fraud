@@ -1,0 +1,96 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Bank graph — transactions as nodes (xFraud-style)
+#
+# Graph topology:
+#   InternalAccount ──[sends]──────────────► Transaction
+#   Transaction     ──[received_by_internal]► InternalAccount   (TRANSACTIONONUS=True)
+#   Transaction     ──[received_by_external]► ExternalAccount   (TRANSACTIONONUS=False)
+#
+# Labels live on Transaction nodes (node classification).
+# Compare against graph_bank_v1 (edge classification) to evaluate whether
+# the graph representation paradigm affects fraud detection performance.
+# ─────────────────────────────────────────────────────────────────────────────
+
+variant: txn_v1
+data_path: datasets/bank_transactions.parquet
+sample_ratio: 1.0                               # 0.01 for dev
+
+split:
+  method: temporal
+  train_end: "2023-04-01"
+  val_end:   "2023-06-01"
+
+cache:
+  enabled: true
+  dir: data/processed/bank
+
+# ── Column roles ──────────────────────────────────────────────────────────────
+columns:
+  sender:        ACCOUNTID
+  receiver:      COUNTERENTITYID
+  timestamp:     EVENTTIME
+  label:         CONFIRMED_RISK
+  onus_flag:     TRANSACTIONONUS
+  device:        DEVICEID
+  customer_type: CUSTOMERTYPE
+  sender_bank:   ACCOUNTAGENTID
+  receiver_bank: COUNTERAGENTID
+  channel:       CHANNEL
+  method:        PAYMENTMETHOD
+  submethod:     PAYMENTSUBMETHOD
+  clearing:      PAYMENTCLEARING
+  value:         VALUE
+  base_value:    BASEVALUE
+  currency:      CURRENCY
+  base_currency: BASECURRENCY
+  intl_flag:     INTERNATIONALFLAG
+
+  drop:
+    - COUNTERPARTYID
+    - ACCOUNTENTITYID
+    - CUSTOMERENTITYID
+    - DEVICEENTITYID
+    - CUSTOMERID
+    - MSGSTATUS
+    - ACCOUNTIDFORMAT
+    - COUNTERIDFORMAT
+    - ACCOUNTBRANCHID
+    - COUNTERBRANCHID
+    - EXCEPTIONRULE
+
+# ── Node types ────────────────────────────────────────────────────────────────
+nodes:
+  # Transaction nodes — one per row. Features are per-row attributes (no aggregation).
+  # These are the labelled nodes (fraud / not-fraud).
+  transaction:
+    features:
+      - log_value           # log1p(VALUE), z-scored
+      - log_base_value      # log1p(BASEVALUE), z-scored
+      - currency_mismatch   # binary: CURRENCY != BASECURRENCY
+      - channel_ohe         # OHE CHANNEL
+      - method_ohe          # OHE PAYMENTMETHOD
+      - submethod_ohe       # OHE PAYMENTSUBMETHOD
+      - clearing_express    # binary: PAYMENTCLEARING != 'default'
+      - international_flag  # INTERNATIONALFLAG as float
+      - time_encoding       # sin/cos hour-of-day + day-of-week (4 dims)
+
+  # Account nodes — features aggregated from training transactions only.
+  internal_account:
+    id_col: ACCOUNTID
+    features:
+      - out_degree
+      - amount_stats
+      - counterparty_diversity
+      - device_diversity
+      - channel_diversity
+      - time_behavior
+      - customer_type_ohe
+
+  external_account:
+    id_col: COUNTERENTITYID
+    exclude_if_sender: true
+    features:
+      - in_degree
+      - received_amount_stats
+      - sender_diversity
+      - sender_bank_diversity

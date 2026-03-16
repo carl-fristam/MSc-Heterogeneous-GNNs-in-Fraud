@@ -1,0 +1,127 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Variant 2 — Payment rail typed edges (6 edge types)
+#
+# Hypothesis: splitting external transactions by payment rail provides
+# inductive bias that improves edge classification vs the flat V1 split.
+#
+# Design:
+#   On-us transactions stay as one type (onus_transfer, low fraud rate,
+#   structurally different from external).
+#   External transactions are split by PAYMENTSUBMETHOD into 5 types.
+#   bankGiro + plusGiro are merged (both Nordic giro rails, similar semantics).
+# ─────────────────────────────────────────────────────────────────────────────
+
+variant: v2
+data_path: datasets/bank_transactions.parquet
+sample_ratio: 1.0
+
+split:
+  method: temporal
+  train_end: "2023-04-01"
+  val_end:   "2023-06-01"
+
+cache:
+  enabled: true
+  dir: data/processed/bank
+
+columns:
+  sender:    ACCOUNTID
+  receiver:  COUNTERENTITYID
+  timestamp: EVENTTIME
+  label:     CONFIRMED_RISK
+  onus_flag: TRANSACTIONONUS
+  device:    DEVICEID
+  customer_type: CUSTOMERTYPE
+  sender_bank:   ACCOUNTAGENTID
+  receiver_bank: COUNTERAGENTID
+  channel:       CHANNEL
+  method:        PAYMENTMETHOD
+  submethod:     PAYMENTSUBMETHOD
+  clearing:      PAYMENTCLEARING
+  value:         VALUE
+  base_value:    BASEVALUE
+  currency:      CURRENCY
+  base_currency: BASECURRENCY
+  intl_flag:     INTERNATIONALFLAG
+  drop:
+    - COUNTERPARTYID
+    - ACCOUNTENTITYID
+    - CUSTOMERENTITYID
+    - DEVICEENTITYID
+    - CUSTOMERID
+    - MSGSTATUS
+    - ACCOUNTIDFORMAT
+    - COUNTERIDFORMAT
+    - ACCOUNTBRANCHID
+    - COUNTERBRANCHID
+    - EXCEPTIONRULE
+
+nodes:
+  internal_account:
+    id_col: ACCOUNTID
+    features:
+      - out_degree
+      - amount_stats
+      - counterparty_diversity
+      - device_diversity
+      - channel_diversity
+      - time_behavior
+      - customer_type_ohe
+
+  external_account:
+    id_col: COUNTERENTITYID
+    exclude_if_sender: true
+    features:
+      - in_degree
+      - received_amount_stats
+      - sender_diversity
+      - sender_bank_diversity
+
+edges:
+  features:
+    - log_value
+    - log_base_value
+    - currency_mismatch
+    - channel_ohe
+    - method_ohe
+    - submethod_ohe
+    - clearing_express
+    - international_flag
+    - time_encoding
+
+  relations:
+    # On-us: keep as single type (low fraud rate, different structure)
+    - name: onus_transfer
+      src:  internal_account
+      dst:  internal_account
+      filter: "TRANSACTIONONUS == True"
+
+    # External: split by payment rail
+    - name: ext_realtime
+      src:  internal_account
+      dst:  external_account
+      filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD == 'realTime'"
+
+    - name: ext_giro
+      src:  internal_account
+      dst:  external_account
+      # bankGiro + plusGiro merged: both Nordic giro rails, similar semantics
+      filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD in ['bankGiro', 'plusGiro']"
+
+    - name: ext_future
+      src:  internal_account
+      dst:  external_account
+      # Scheduled/future-dated payments: different temporal risk profile
+      filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD == 'futurePayment'"
+
+    - name: ext_salary
+      src:  internal_account
+      dst:  external_account
+      # Payroll: very low fraud rate, useful as a near-negative edge type
+      filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD == 'salary'"
+
+    - name: ext_other
+      src:  internal_account
+      dst:  external_account
+      # accountClosure, chaps, unknown/unmapped values
+      filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD not in ['realTime', 'bankGiro', 'plusGiro', 'futurePayment', 'salary']"
