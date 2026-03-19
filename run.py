@@ -46,23 +46,38 @@ def run_l1(prep):
 
 
 def run_l2(prep, config, task="node", conv_type="sage", **kwargs):
-    """L2: Homogeneous GNN."""
+    """L2: Homogeneous GNN (or KGE models)."""
     from src.homogeneous.builder import build_homogeneous_graph
-    from src.homogeneous.models import HomoGNN
     from src.training.trainer import Trainer, TrainConfig
 
     result = build_homogeneous_graph(prep, mode=task, config=config)
     data = result["data"]
     device = get_device()
 
-    model = HomoGNN(
-        in_dim=data.x.shape[1],
-        hidden_dim=kwargs.get("hidden_dim", 64),
-        num_layers=kwargs.get("num_layers", 2),
-        dropout=kwargs.get("dropout", 0.3),
-        conv_type=conv_type,
-        task=task,
-    )
+    edge_feat_dim = data.edge_attr.shape[1] if hasattr(data, "edge_attr") and data.edge_attr is not None else 0
+
+    if conv_type in ("transe", "distmult"):
+        from src.homogeneous.kge_models import TransE, DistMult
+        if task != "edge":
+            raise ValueError(f"{conv_type} only supports edge classification")
+        ModelClass = TransE if conv_type == "transe" else DistMult
+        model = ModelClass(
+            num_nodes=data.num_nodes,
+            embedding_dim=kwargs.get("hidden_dim", 64),
+            edge_feat_dim=edge_feat_dim,
+            dropout=kwargs.get("dropout", 0.3),
+        )
+    else:
+        from src.homogeneous.models import HomoGNN
+        model = HomoGNN(
+            in_dim=data.x.shape[1],
+            hidden_dim=kwargs.get("hidden_dim", 64),
+            num_layers=kwargs.get("num_layers", 2),
+            dropout=kwargs.get("dropout", 0.3),
+            conv_type=conv_type,
+            task=task,
+            edge_feat_dim=edge_feat_dim,
+        )
 
     train_config = TrainConfig(
         task=task,
@@ -221,7 +236,7 @@ def main():
     parser.add_argument("--all", action="store_true", help="Run all levels")
     parser.add_argument("--task", type=str, default="node", choices=["node", "edge"])
     parser.add_argument("--model", type=str, default="hgt", choices=["hgt", "hmpnn"])
-    parser.add_argument("--conv", type=str, default="sage", choices=["gcn", "sage"])
+    parser.add_argument("--conv", type=str, default="sage", choices=["gcn", "sage", "transe", "distmult"])
     parser.add_argument("--variant", type=str, default="v1", help="Config variant (v1, v2, v3, txn_v1)")
     parser.add_argument("--config", type=str, default=None, help="Config name override")
     parser.add_argument("--sample", type=float, default=None, help="Override sample_ratio")
