@@ -1,9 +1,9 @@
 """
-HMPNN-ct model adapted for SAML-D dataset.
-Based on: https://github.com/fredjo89/heterogeneous-mpnn
+HMPNN — Heterogeneous Message Passing Neural Network.
 
-Heterogeneous Message Passing Neural Network with concatenation aggregation.
+Based on Johannessen & Jullum (2023).
 Uses NNConv to incorporate edge features into message passing.
+Supports both node and edge classification.
 """
 
 from src.utils.compat import apply_pyg_compat_patch
@@ -29,7 +29,6 @@ class HMPNNLayer(nn.Module):
 
         self.target_node_type = target_node_type
 
-        # Get input dimensions for each node type
         if dim_in is None:
             self.dim_in = {nt: data[nt].x.shape[1] for nt in data.node_types}
         else:
@@ -38,7 +37,6 @@ class HMPNNLayer(nn.Module):
         self.dim_message = dim_message
         self.dim_out = dim_out
 
-        # Create message passing operators for each edge type ending at target
         self.convs = nn.ModuleList()
         self.edge_types_to_target = []
 
@@ -48,13 +46,13 @@ class HMPNNLayer(nn.Module):
             if dst_type != target_node_type:
                 continue
 
+            if not hasattr(data[edge_type], "edge_attr") or data[edge_type].edge_attr is None:
+                continue
+
             self.edge_types_to_target.append(edge_type)
 
-            # Edge feature dimension
             num_edge_features = data[edge_type].edge_attr.shape[1]
 
-            # NNConv: uses a NN to compute message weights from edge features
-            # The NN maps edge_attr -> (dim_in[src] * dim_message) matrix
             message_nn = nn.Sequential(
                 nn.Linear(num_edge_features, 32),
                 nn.ReLU(),
@@ -71,8 +69,8 @@ class HMPNNLayer(nn.Module):
             hetero_conv = HeteroConv({edge_type: conv}, aggr='sum')
             self.convs.append(hetero_conv)
 
-        # Final linear layer: concat all messages -> output
-        self.linear = nn.Linear(len(self.convs) * dim_message, dim_out)
+        n_incoming = max(len(self.convs), 1)
+        self.linear = nn.Linear(n_incoming * dim_message, dim_out)
 
     def forward(self, x_dict, edge_index_dict, edge_attr_dict):
         messages = []
@@ -82,41 +80,44 @@ class HMPNNLayer(nn.Module):
             msg = torch.sigmoid(out[self.target_node_type])
             messages.append(msg)
 
-        # Concatenate all messages
-        concat = torch.cat(messages, dim=1)
+        if not messages:
+            n = x_dict[self.target_node_type].shape[0]
+            device = x_dict[self.target_node_type].device
+            return torch.zeros(n, self.dim_out, device=device)
 
-        # Final transformation
+        concat = torch.cat(messages, dim=1)
         return torch.sigmoid(self.linear(concat))
 
 
 class HMPNN(nn.Module):
     """
-    Full HMPNN model for node classification.
+    Full HMPNN model.
 
     Args:
         data: HeteroData object
-        target_node_type: Node type to classify
-        num_layers: Number of HMPNN layers (1-3)
-        hidden_dim: Hidden dimension for intermediate layers
-        message_dim: Message dimension in HMPNN layers
+        target_node_type: node type to produce embeddings for
+        num_layers: number of HMPNN layers (1-3)
+        hidden_dim: hidden dimension
+        message_dim: message dimension in HMPNN layers
+        task: "node" or "edge"
     """
 
-    def __init__(self, data, target_node_type='account', num_layers=2,
-                 hidden_dim=16, message_dim=8):
+    def __init__(self, data, target_node_type="transaction", num_layers=2,
+                 hidden_dim=16, message_dim=8, task="node"):
         super().__init__()
 
         self.target_node_type = target_node_type
         self.num_layers = num_layers
         self.node_types = data.node_types
+        self.task = task
 
-        # Get input dimensions
         dim_in = {nt: data[nt].x.shape[1] for nt in data.node_types}
 
         if num_layers == 1:
-            # Single layer directly to output
+            out_dim = 1 if task == "node" else hidden_dim
             self.layers = nn.ModuleList([
                 HMPNNLayer(data, target_node_type, dim_in=dim_in,
-                          dim_message=message_dim, dim_out=1)
+                          dim_message=message_dim, dim_out=out_dim)
             ])
         else:
             self.layers = nn.ModuleList()
@@ -129,9 +130,9 @@ class HMPNN(nn.Module):
                     dim_message=message_dim, dim_out=hidden_dim
                 )
 
-            # Middle layers (if num_layers > 2)
             dim_in_next = {nt: hidden_dim for nt in data.node_types}
 
+            # Middle layers (if num_layers > 2)
             if num_layers >= 3:
                 self.layer2_modules = nn.ModuleDict()
                 for nt in data.node_types:
@@ -140,51 +141,44 @@ class HMPNN(nn.Module):
                         dim_message=message_dim, dim_out=hidden_dim
                     )
 
-            # Final layer: only for target node type
+            # Final layer
+            final_out = 1 if task == "node" else hidden_dim
             self.final_layer = HMPNNLayer(
                 data, target_node_type, dim_in=dim_in_next,
-                dim_message=message_dim * 2, dim_out=1
+                dim_message=message_dim * 2, dim_out=final_out
+            )
+
+        if task == "edge":
+            self.edge_classifier = nn.Sequential(
+                nn.Linear(hidden_dim * 2, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, 1),
             )
 
     def forward(self, x_dict, edge_index_dict, edge_attr_dict):
         if self.num_layers == 1:
-            return self.layers[0](x_dict, edge_index_dict, edge_attr_dict)
+            out = self.layers[0](x_dict, edge_index_dict, edge_attr_dict)
+            if self.task == "node":
+                return out
+            else:
+                return {self.target_node_type: out}
 
         # Layer 1: update all node types
         x_dict_new = {}
         for nt in self.node_types:
             x_dict_new[nt] = self.layer1_modules[nt](x_dict, edge_index_dict, edge_attr_dict)
 
-        # Layer 2 (if exists): update all node types
+        # Layer 2 (if exists)
         if self.num_layers >= 3:
             x_dict_tmp = {}
             for nt in self.node_types:
                 x_dict_tmp[nt] = self.layer2_modules[nt](x_dict_new, edge_index_dict, edge_attr_dict)
             x_dict_new = x_dict_tmp
 
-        # Final layer: only target node type
-        return self.final_layer(x_dict_new, edge_index_dict, edge_attr_dict)
+        out = self.final_layer(x_dict_new, edge_index_dict, edge_attr_dict)
 
-
-if __name__ == '__main__':
-    from src.utils.config import PROJECT_ROOT
-    from src.data.saml_hetero import load_hetero_saml_data
-
-    # Load small sample
-    data, _ = load_hetero_saml_data(
-        sample_ratio=0.01,
-        cache_path=str(PROJECT_ROOT / 'data' / 'processed' / 'saml_hetero_test.pkl')
-    )
-
-    print("\nTesting HMPNN model...")
-    model = HMPNN(data, target_node_type='account', num_layers=2)
-    print(f"Model parameters: {sum(p.numel() for p in model.parameters())}")
-
-    # Forward pass
-    x_dict = {nt: data[nt].x for nt in data.node_types}
-    edge_index_dict = {et: data[et].edge_index for et in data.edge_types}
-    edge_attr_dict = {et: data[et].edge_attr for et in data.edge_types}
-
-    out = model(x_dict, edge_index_dict, edge_attr_dict)
-    print(f"Output shape: {out.shape}")
-    print(f"Output range: [{out.min():.4f}, {out.max():.4f}]")
+        if self.task == "node":
+            return out
+        else:
+            x_dict_new[self.target_node_type] = out
+            return x_dict_new

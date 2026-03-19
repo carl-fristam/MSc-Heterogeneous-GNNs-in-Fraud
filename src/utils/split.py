@@ -1,3 +1,7 @@
+"""
+Temporal and stratified split utilities for train/val/test partitioning.
+"""
+
 import pandas as pd
 import numpy as np
 
@@ -11,8 +15,6 @@ def random_stratified_split(
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     """
     Random stratified split preserving class balance across splits.
-
-    Matches Johannessen & Jullum (2023) experimental setup.
 
     Args:
         df:          DataFrame with a label column
@@ -30,7 +32,6 @@ def random_stratified_split(
     val_mask = pd.Series(False, index=df.index)
     test_mask = pd.Series(False, index=df.index)
 
-    # Split each class independently to preserve balance
     for label in df[label_col].unique():
         idx = df.index[df[label_col] == label].to_numpy()
         rng.shuffle(idx)
@@ -71,7 +72,6 @@ def temporal_split(
     Returns:
         (train_mask, val_mask, test_mask) — boolean pd.Series, same index as df
     """
-
     dates = df["_datetime"]
     train_cutoff = pd.Timestamp(train_end)
     val_cutoff = pd.Timestamp(val_end)
@@ -80,13 +80,13 @@ def temporal_split(
     val_mask = (dates >= train_cutoff) & (dates < val_cutoff)
     test_mask = dates >= val_cutoff
 
-    # Sanity checks
     total = train_mask.sum() + val_mask.sum() + test_mask.sum()
     assert total == len(df), f"Split masks don't cover all rows: {total} vs {len(df)}"
 
     _print_split_stats(df, train_mask, val_mask, test_mask, title="Temporal split")
 
     return train_mask, val_mask, test_mask
+
 
 def _print_split_stats(
     df: pd.DataFrame,
@@ -95,17 +95,15 @@ def _print_split_stats(
     test_mask: pd.Series,
     title: str = "Split",
 ) -> None:
-    """ Print row counts, date ranges, and label distributions for each split """
-
+    """Print row counts, date ranges, and label distributions for each split."""
     label_col = None
-
-    for col in ("Is_laundering", "CONFIRMEDRISK"):
+    for col in ("CONFIRMED_RISK", "Is_laundering", "CONFIRMEDRISK"):
         if col in df.columns:
             label_col = col
             break
 
     print(f"\n{title}:")
-    
+
     for name, mask in [("Train", train_mask), ("Val", val_mask), ("Test", test_mask)]:
         n = mask.sum()
         dates = df.loc[mask, "_datetime"]
@@ -115,7 +113,5 @@ def _print_split_stats(
             pos = df.loc[mask, label_col].sum()
             pct = 100 * pos / n
             print(f"  {name:5s}: {n:>10,} rows  |  {date_range}  |  {int(pos)} pos ({pct:.2f}%)")
-
         else:
-
             print(f"  {name:5s}: {n:>10,} rows  |  {date_range}")
