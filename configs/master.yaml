@@ -17,8 +17,8 @@ sample_ratio: 1.0   # 0.01 for dev
 
 split:
   method: temporal
-  train_end: "2023-04-01"
-  val_end:   "2023-06-01"
+  train_end: "2025-10-01"
+  val_end:   "2025-12-01"
 
 cache:
   enabled: true
