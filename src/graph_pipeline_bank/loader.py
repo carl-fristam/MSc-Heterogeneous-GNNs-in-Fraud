@@ -52,6 +52,14 @@ def load_raw(data_path: str, config: dict) -> pd.DataFrame:
     # ── Sort by time (required for temporal split correctness) ───────────────
     df = df.sort_values("_datetime").reset_index(drop=True)
 
+    # ── Truncate (drop rows after label coverage ends) ─────────────────────
+    truncate = config.get("truncate_after")
+    if truncate:
+        cutoff = pd.Timestamp(truncate)
+        before = len(df)
+        df = df[df["_datetime"] <= cutoff].reset_index(drop=True)
+        print(f"  Truncated to {truncate}: {before:,} → {len(df):,} rows")
+
     # ── Sample ───────────────────────────────────────────────────────────────
     if sample < 1.0:
         n_days = config.get("n_days", None)
