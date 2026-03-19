@@ -7,7 +7,7 @@ Graph design:
   - Two edge relation types:
       ('internal_account', 'onus_transfer',    'internal_account')  — TRANSACTIONONUS=True
       ('internal_account', 'external_transfer', 'external_account') — TRANSACTIONONUS=False
-  - Labels (CONFIRMED_RISK) and train/val/test masks live on edges
+  - Labels (CONFIRMEDRISK) and train/val/test masks live on edges
   - Node features: rich for internal accounts, sparse for external
   - Edge features: amount, currency, channel, method, flags, time encodings
 
@@ -46,7 +46,7 @@ COL_SENDER      = "ACCOUNTID"
 COL_RECEIVER    = "COUNTERENTITYID"
 COL_ONUS        = "TRANSACTIONONUS"      # bool: True = on-us (internal-internal)
 COL_TIME        = "EVENTTIME"
-COL_LABEL       = "CONFIRMED_RISK"
+COL_LABEL       = "CONFIRMEDRISK"
 COL_VALUE       = "VALUE"
 COL_BASEVALUE   = "BASEVALUE"
 COL_CURRENCY    = "CURRENCY"

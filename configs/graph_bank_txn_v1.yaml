@@ -29,7 +29,7 @@ columns:
   sender:        ACCOUNTID
   receiver:      COUNTERENTITYID
   timestamp:     EVENTTIME
-  label:         CONFIRMED_RISK
+  label:         CONFIRMEDRISK
   onus_flag:     TRANSACTIONONUS
   device:        DEVICEID
   customer_type: CUSTOMERTYPE
