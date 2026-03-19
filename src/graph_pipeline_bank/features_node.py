@@ -130,7 +130,7 @@ def _out_degree(df, col_cfg, node_to_id, train_mask):
 @register_internal_feature("amount_stats", dim=3)
 def _amount_stats(df, col_cfg, node_to_id, train_mask):
     """mean_sent, std_sent, total_sent (log1p applied to amounts)."""
-    val_col = col_cfg.get("value")
+    val_col = col_cfg.get("value") or col_cfg.get("base_value")
     if not val_col or val_col not in df.columns:
         return None
     n        = len(node_to_id)
@@ -261,7 +261,7 @@ def _ext_in_degree(df, col_cfg, node_to_id, train_mask):
 @register_external_feature("received_amount_stats", dim=2)
 def _ext_received_amount_stats(df, col_cfg, node_to_id, train_mask):
     """mean_received, std_received (log1p applied)."""
-    val_col  = col_cfg.get("value")
+    val_col  = col_cfg.get("value") or col_cfg.get("base_value")
     onus_col = col_cfg.get("onus_flag")
     if not val_col or val_col not in df.columns:
         return None
