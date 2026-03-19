@@ -14,17 +14,15 @@ class HomoGNN(nn.Module):
     """
     Flexible homogeneous GNN supporting GCN or GraphSAGE backbone.
 
-    Args:
-        in_dim: input feature dimension
-        hidden_dim: hidden layer dimension
-        num_layers: number of GNN layers
-        dropout: dropout rate
-        conv_type: "gcn" or "sage"
-        task: "node" or "edge"
+    Node mode: GNN produces per-node embeddings → linear classifier on
+               transaction nodes.
+    Edge mode: GNN produces per-node embeddings → concat(src, dst, edge_attr)
+               → MLP classifier on edges. Edge features (transaction features)
+               are concatenated with structural embeddings.
     """
 
     def __init__(self, in_dim, hidden_dim=64, num_layers=2, dropout=0.3,
-                 conv_type="sage", task="node"):
+                 conv_type="sage", task="node", edge_feat_dim=0):
         super().__init__()
         self.task = task
         self.dropout = nn.Dropout(dropout)
@@ -34,11 +32,9 @@ class HomoGNN(nn.Module):
         self.convs = nn.ModuleList()
         self.norms = nn.ModuleList()
 
-        # First layer
         self.convs.append(ConvClass(in_dim, hidden_dim))
         self.norms.append(nn.LayerNorm(hidden_dim))
 
-        # Middle layers
         for _ in range(num_layers - 1):
             self.convs.append(ConvClass(hidden_dim, hidden_dim))
             self.norms.append(nn.LayerNorm(hidden_dim))
@@ -46,9 +42,9 @@ class HomoGNN(nn.Module):
         if task == "node":
             self.classifier = nn.Linear(hidden_dim, 1)
         else:
-            # Edge classification: concat src + dst embeddings
+            clf_in = hidden_dim * 2 + edge_feat_dim
             self.classifier = nn.Sequential(
-                nn.Linear(hidden_dim * 2, hidden_dim),
+                nn.Linear(clf_in, hidden_dim),
                 nn.ReLU(),
                 nn.Dropout(dropout),
                 nn.Linear(hidden_dim, 1),
@@ -66,7 +62,9 @@ class HomoGNN(nn.Module):
         if self.task == "node":
             return self.classifier(x).squeeze(-1)
         else:
-            # Edge classification: score each edge by concat(src, dst)
             src, dst = edge_index
-            edge_emb = torch.cat([x[src], x[dst]], dim=1)
+            parts = [x[src], x[dst]]
+            if hasattr(data, "edge_attr") and data.edge_attr is not None:
+                parts.append(data.edge_attr)
+            edge_emb = torch.cat(parts, dim=1)
             return self.classifier(edge_emb).squeeze(-1)

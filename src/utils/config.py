@@ -43,6 +43,7 @@ def load_variant(variant: str) -> dict:
         "variant": variant,
         "data_path": master["data_path"],
         "sample_ratio": master["sample_ratio"],
+        "truncate_after": master.get("truncate_after"),
         "split": deepcopy(master["split"]),
         "cache": deepcopy(master["cache"]),
         "columns": deepcopy(master["columns"]),

@@ -19,8 +19,8 @@ truncate_after: "2024-12-31"
 
 split:
   method: temporal
-  train_end: "2024-11-15"
-  val_end:   "2024-12-15"
+  train_end: "2024-11-20"
+  val_end:   "2024-12-10"
 
 cache:
   enabled: true
