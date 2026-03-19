@@ -179,7 +179,8 @@ def _international_flag(df, col_cfg, vocabs):
     col = col_cfg.get("intl_flag")
     if not col or col not in df.columns:
         return None
-    return df[col].fillna(0).astype(np.float32).values.reshape(-1, 1)
+    raw = df[col].astype(str).str.strip().str.lower()
+    return raw.map({"true": 1.0, "false": 0.0, "1": 1.0, "0": 0.0}).fillna(0).astype(np.float32).values.reshape(-1, 1)
 
 
 @register_edge_feature("time_encoding", dim=4)

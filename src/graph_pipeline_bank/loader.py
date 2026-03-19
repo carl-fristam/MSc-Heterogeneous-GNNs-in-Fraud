@@ -60,10 +60,9 @@ def load_raw(data_path: str, config: dict) -> pd.DataFrame:
             df = df[df["_datetime"] < cutoff].reset_index(drop=True)
             print(f"  Temporal sample: first {n_days} days → {len(df):,} rows")
         else:
-            df = df.sample(frac=sample, random_state=42).reset_index(drop=True)
-            # Re-sort after random sample
-            df = df.sort_values("_datetime").reset_index(drop=True)
-            print(f"  Random sample: {sample:.0%} → {len(df):,} rows")
+            n_rows = int(len(df) * sample)
+            df = df.head(n_rows).reset_index(drop=True)
+            print(f"  Temporal sample: first {sample:.0%} ({n_rows:,}) rows → {df['_datetime'].min()} to {df['_datetime'].max()}")
 
     # ── Normalise TRANSACTIONONUS to bool ────────────────────────────────────
     onus_col = col_cfg.get("onus_flag")
