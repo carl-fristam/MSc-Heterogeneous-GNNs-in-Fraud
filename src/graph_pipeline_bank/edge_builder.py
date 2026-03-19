@@ -5,7 +5,7 @@ For each relation declared in config["edges"]["relations"]:
   1. Apply the filter expression to select the relevant rows
   2. Map sender/receiver IDs → integer node indices
   3. Build edge features from the selected rows
-  4. Attach labels (CONFIRMED_RISK) and train/val/test masks
+  4. Attach labels (CONFIRMEDRISK) and train/val/test masks
 
 The result is a list of EdgeBundle dicts, one per relation type.
 The builder.py then assembles these into a PyG HeteroData object.

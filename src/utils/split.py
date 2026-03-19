@@ -97,7 +97,7 @@ def _print_split_stats(
 ) -> None:
     """Print row counts, date ranges, and label distributions for each split."""
     label_col = None
-    for col in ("CONFIRMED_RISK", "Is_laundering", "CONFIRMEDRISK"):
+    for col in ("CONFIRMEDRISK", "Is_laundering", "CONFIRMEDRISK"):
         if col in df.columns:
             label_col = col
             break
