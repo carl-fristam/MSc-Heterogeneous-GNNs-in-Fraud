@@ -1,24 +1,20 @@
 """
-Graph builder — orchestrates the full bank pipeline.
+Graph builder — orchestrates the full bank pipeline (edge classification).
+
+Can be called standalone with a config, or with a PreparedData object
+to share data loading/splitting with other experiment levels.
 
 Entry point:
+    # Standalone (loads data itself)
     from src.utils.config import load_config
     from src.graph_pipeline_bank.builder import build_graph
+    result = build_graph(load_config("graph_bank_v1"))
 
-    config = load_config("graph_bank_v1")
-    result = build_graph(config)
-    data   = result["data"]        # PyG HeteroData
-    maps   = result["node_maps"]   # {node_type: {raw_id: int_index}}
-    vocabs = result["vocabs"]      # OHE vocabularies (for reproducibility)
-
-Output HeteroData structure (V1 example):
-    data["internal_account"].x         — node features (N_int, F_int)
-    data["external_account"].x         — node features (N_ext, F_ext)
-    data["internal_account", "onus_transfer",    "internal_account"].edge_index
-    data["internal_account", "onus_transfer",    "internal_account"].edge_attr
-    data["internal_account", "onus_transfer",    "internal_account"].y
-    data["internal_account", "onus_transfer",    "internal_account"].train_mask
-    ... (same for external_transfer, and per-relation for V2/V3)
+    # Shared data (recommended — guarantees same split)
+    from src.data.prepare import prepare_data
+    from src.graph_pipeline_bank.builder import build_graph
+    prep = prepare_data(config)
+    result = build_graph(config, prep=prep)
 """
 
 import hashlib
@@ -35,17 +31,17 @@ from src.graph_pipeline_bank.loader import load_raw
 from src.graph_pipeline_bank.node_builder import build_node_maps
 from src.graph_pipeline_bank.features_node import build_node_features
 from src.graph_pipeline_bank.edge_builder import build_edges
-
-# Reuse the existing split utilities — they only need _datetime + label col
-from src.graph_pipeline.split import temporal_split, random_stratified_split
+from src.utils.split import temporal_split, random_stratified_split
 
 
-def build_graph(config: dict) -> dict:
+def build_graph(config: dict, prep=None) -> dict:
     """
     Build a PyG HeteroData graph for the bank payment dataset.
 
     Args:
         config: dict loaded from configs/graph_bank_v*.yaml
+        prep: optional PreparedData instance. If provided, reuses its
+              df/masks/vocabs instead of loading from scratch.
 
     Returns:
         dict with keys:
@@ -65,28 +61,33 @@ def build_graph(config: dict) -> dict:
     print(f"Building bank graph  |  variant={variant}")
     print(f"{'='*60}")
 
-    # ── Load ─────────────────────────────────────────────────────────────────
-    data_path = str(PROJECT_ROOT / config["data_path"])
-    df = load_raw(data_path, config)
-
-    # ── Split ─────────────────────────────────────────────────────────────────
-    split_cfg = config["split"]
-    col_cfg   = config["columns"]
-
-    if split_cfg.get("method", "temporal") == "temporal":
-        train_mask, val_mask, test_mask = temporal_split(
-            df,
-            train_end=split_cfg["train_end"],
-            val_end=split_cfg["val_end"],
-        )
+    # ── Load & split (reuse PreparedData if available) ────────────────────────
+    if prep is not None:
+        df = prep.df
+        train_mask = prep.train_mask
+        val_mask = prep.val_mask
+        test_mask = prep.test_mask
     else:
-        train_mask, val_mask, test_mask = random_stratified_split(
-            df,
-            label_col=col_cfg["label"],
-            train_ratio=split_cfg.get("train_ratio", 0.7),
-            val_ratio=split_cfg.get("val_ratio", 0.15),
-            seed=split_cfg.get("seed", 42),
-        )
+        data_path = str(PROJECT_ROOT / config["data_path"])
+        df = load_raw(data_path, config)
+
+        split_cfg = config["split"]
+        col_cfg = config["columns"]
+
+        if split_cfg.get("method", "temporal") == "temporal":
+            train_mask, val_mask, test_mask = temporal_split(
+                df,
+                train_end=split_cfg["train_end"],
+                val_end=split_cfg["val_end"],
+            )
+        else:
+            train_mask, val_mask, test_mask = random_stratified_split(
+                df,
+                label_col=col_cfg["label"],
+                train_ratio=split_cfg.get("train_ratio", 0.7),
+                val_ratio=split_cfg.get("val_ratio", 0.15),
+                seed=split_cfg.get("seed", 42),
+            )
 
     # ── Node mappings ─────────────────────────────────────────────────────────
     print("\nBuilding node mappings...")
@@ -101,7 +102,7 @@ def build_graph(config: dict) -> dict:
             df=df,
             node_type=node_type,
             node_to_id=node_maps[node_type],
-            col_cfg=col_cfg,
+            col_cfg=config["columns"],
             train_mask=train_mask,
             enabled=enabled,
         )
@@ -142,7 +143,6 @@ def _cache_path(config: dict) -> str:
     cache_dir = config.get("cache", {}).get("dir", "data/processed/bank")
     variant   = config.get("variant", "unknown")
     sr        = config.get("sample_ratio", 1.0)
-    # Hash the edge relations to detect config changes
     rel_sig = json.dumps(config.get("edges", {}).get("relations", []), sort_keys=True)
     h = hashlib.md5(rel_sig.encode()).hexdigest()[:6]
     return str(PROJECT_ROOT / cache_dir / f"graph_bank_{variant}_sr{sr:.2f}_{h}.pkl")
