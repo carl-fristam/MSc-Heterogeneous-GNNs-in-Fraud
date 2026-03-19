@@ -84,7 +84,7 @@ def fit_vocabs(df: pd.DataFrame, col_cfg: dict, train_mask: pd.Series) -> dict[s
     vocabs = {}
     from src.graph_pipeline_bank.normalize import vocab_from_training
 
-    for key in ("channel", "method", "submethod", "clearing"):
+    for key in ("channel", "method", "submethod", "clearing", "branch_tbe"):
         col = col_cfg.get(key)
         if col and col in df.columns:
             vocabs[key] = vocab_from_training(df.loc[train_mask, col])
@@ -181,6 +181,15 @@ def _international_flag(df, col_cfg, vocabs):
         return None
     raw = df[col].astype(str).str.strip().str.lower()
     return raw.map({"true": 1.0, "false": 0.0, "1": 1.0, "0": 0.0}).fillna(0).astype(np.float32).values.reshape(-1, 1)
+
+
+@register_edge_feature("branch_tbe_ohe", dim=None)
+def _branch_tbe_ohe(df, col_cfg, vocabs):
+    """OHE of ACCOUNTBRANCH_TBE. Vocab from training."""
+    col = col_cfg.get("branch_tbe")
+    if not col or col not in df.columns or "branch_tbe" not in vocabs:
+        return None
+    return one_hot(df[col].astype(str).fillna("rare"), vocabs["branch_tbe"])
 
 
 @register_edge_feature("time_encoding", dim=4)
