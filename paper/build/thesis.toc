@@ -1,0 +1,81 @@
+\contentsline {chapter}{Abstract}{iii}{chapter*.1}%
+\contentsline {chapter}{Acknowledgements}{v}{chapter*.3}%
+\contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Motivation}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Research Questions and Hypotheses}{2}{section.1.2}%
+\contentsline {section}{\numberline {1.3}Contributions}{2}{section.1.3}%
+\contentsline {section}{\numberline {1.4}Thesis Outline}{3}{section.1.4}%
+\contentsline {chapter}{\numberline {2}Background and Related Work}{5}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Transaction Fraud Detection}{5}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Traditional Machine Learning for Fraud Detection}{6}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Graph Representations of Financial Data}{6}{section.2.3}%
+\contentsline {section}{\numberline {2.4}Graph Neural Networks}{7}{section.2.4}%
+\contentsline {section}{\numberline {2.5}Knowledge Graph Embeddings}{8}{section.2.5}%
+\contentsline {section}{\numberline {2.6}Heterogeneous Graph Neural Networks}{8}{section.2.6}%
+\contentsline {subsection}{\numberline {2.6.1}Heterogeneous Graph Transformer (HGT)}{8}{subsection.2.6.1}%
+\contentsline {subsection}{\numberline {2.6.2}Heterogeneous Message Passing Neural Network (HMPNN)}{9}{subsection.2.6.2}%
+\contentsline {subsection}{\numberline {2.6.3}Other Heterogeneous Approaches}{9}{subsection.2.6.3}%
+\contentsline {section}{\numberline {2.7}Self-Supervised Learning on Graphs}{9}{section.2.7}%
+\contentsline {subsection}{\numberline {2.7.1}LaundroGraph}{10}{subsection.2.7.1}%
+\contentsline {subsection}{\numberline {2.7.2}Heterogeneous Graph Masked Autoencoders (HGMAE)}{10}{subsection.2.7.2}%
+\contentsline {section}{\numberline {2.8}Explainability in Graph-Based Fraud Detection}{11}{section.2.8}%
+\contentsline {section}{\numberline {2.9}Evaluation Under Extreme Class Imbalance}{11}{section.2.9}%
+\contentsline {section}{\numberline {2.10}Summary and Research Gap}{12}{section.2.10}%
+\contentsline {chapter}{\numberline {3}Data}{13}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Data Collection}{13}{section.3.1}%
+\contentsline {paragraph}{A note on label semantics.}{13}{section*.10}%
+\contentsline {section}{\numberline {3.2}Dataset Overview}{13}{section.3.2}%
+\contentsline {section}{\numberline {3.3}Dataset Description}{14}{section.3.3}%
+\contentsline {subsection}{\numberline {3.3.1}The Transaction Itself}{14}{subsection.3.3.1}%
+\contentsline {subsection}{\numberline {3.3.2}The Parties}{14}{subsection.3.3.2}%
+\contentsline {subsection}{\numberline {3.3.3}Payment Classification}{15}{subsection.3.3.3}%
+\contentsline {section}{\numberline {3.4}Feature Engineering}{15}{section.3.4}%
+\contentsline {subsection}{\numberline {3.4.1}Edge Features (Transaction-Level)}{15}{subsection.3.4.1}%
+\contentsline {subsection}{\numberline {3.4.2}Node Features (Aggregated from Training Data)}{15}{subsection.3.4.2}%
+\contentsline {paragraph}{InternalAccount features.}{15}{section*.12}%
+\contentsline {paragraph}{ExternalAccount features.}{15}{section*.14}%
+\contentsline {section}{\numberline {3.5}Graph Construction}{16}{section.3.5}%
+\contentsline {subsection}{\numberline {3.5.1}V1: Onus vs.\ External (2 Edge Types)}{16}{subsection.3.5.1}%
+\contentsline {subsection}{\numberline {3.5.2}V2: Payment-Rail-Typed Edges (6 Edge Types)}{16}{subsection.3.5.2}%
+\contentsline {subsection}{\numberline {3.5.3}TXN\_V1: Transactions as Nodes}{16}{subsection.3.5.3}%
+\contentsline {section}{\numberline {3.6}Temporal Split}{16}{section.3.6}%
+\contentsline {section}{\numberline {3.7}Class Imbalance}{17}{section.3.7}%
+\contentsline {chapter}{\numberline {4}Methodology}{19}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Experimental Ladder}{19}{section.4.1}%
+\contentsline {section}{\numberline {4.2}L0: Tabular Baselines}{20}{section.4.2}%
+\contentsline {subsection}{\numberline {4.2.1}Logistic Regression}{20}{subsection.4.2.1}%
+\contentsline {subsection}{\numberline {4.2.2}XGBoost}{20}{subsection.4.2.2}%
+\contentsline {section}{\numberline {4.3}L1: Graph-Augmented Features}{20}{section.4.3}%
+\contentsline {section}{\numberline {4.4}L2: Homogeneous Models}{20}{section.4.4}%
+\contentsline {subsection}{\numberline {4.4.1}Graph Convolutional Network (GCN)}{20}{subsection.4.4.1}%
+\contentsline {subsection}{\numberline {4.4.2}GraphSAGE}{21}{subsection.4.4.2}%
+\contentsline {subsection}{\numberline {4.4.3}TransE}{21}{subsection.4.4.3}%
+\contentsline {subsection}{\numberline {4.4.4}DistMult}{21}{subsection.4.4.4}%
+\contentsline {section}{\numberline {4.5}L3: Heterogeneous GNNs}{22}{section.4.5}%
+\contentsline {subsection}{\numberline {4.5.1}Heterogeneous Graph Transformer (HGT)}{22}{subsection.4.5.1}%
+\contentsline {subsection}{\numberline {4.5.2}HMPNN}{22}{subsection.4.5.2}%
+\contentsline {section}{\numberline {4.6}L4: Self-Supervised Pretraining}{22}{section.4.6}%
+\contentsline {subsection}{\numberline {4.6.1}HGMAE}{22}{subsection.4.6.1}%
+\contentsline {subsection}{\numberline {4.6.2}LaundroGraph}{23}{subsection.4.6.2}%
+\contentsline {subsection}{\numberline {4.6.3}Motivation for Self-Supervised Pretraining}{23}{subsection.4.6.3}%
+\contentsline {section}{\numberline {4.7}Training Protocol}{24}{section.4.7}%
+\contentsline {section}{\numberline {4.8}Evaluation Framework}{24}{section.4.8}%
+\contentsline {chapter}{\numberline {5}Experiments and Results}{25}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Experimental Setup}{25}{section.5.1}%
+\contentsline {section}{\numberline {5.2}L0 and L1 Results: Tabular and Graph Feature Baselines}{25}{section.5.2}%
+\contentsline {section}{\numberline {5.3}L2 Results: Homogeneous GNNs and KGE}{25}{section.5.3}%
+\contentsline {section}{\numberline {5.4}L3 Results: Heterogeneous GNNs}{25}{section.5.4}%
+\contentsline {section}{\numberline {5.5}L4 Results: Self-Supervised Pretraining}{25}{section.5.5}%
+\contentsline {section}{\numberline {5.6}Topology Ablation: V1 vs.\ V2}{25}{section.5.6}%
+\contentsline {section}{\numberline {5.7}Cross-Level Comparison}{25}{section.5.7}%
+\contentsline {section}{\numberline {5.8}Explainability Analysis}{25}{section.5.8}%
+\contentsline {chapter}{\numberline {6}Discussion}{27}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Hypothesis Assessment}{27}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Practical Implications for Fraud Detection Operations}{27}{section.6.2}%
+\contentsline {section}{\numberline {6.3}Limitations}{27}{section.6.3}%
+\contentsline {section}{\numberline {6.4}Comparison with Prior Work}{27}{section.6.4}%
+\contentsline {chapter}{\numberline {7}Conclusion}{29}{chapter.7}%
+\contentsline {section}{\numberline {7.1}Summary of Findings}{29}{section.7.1}%
+\contentsline {section}{\numberline {7.2}Future Work}{29}{section.7.2}%
+\contentsline {chapter}{\numberline {A}Feature Reference}{31}{appendix.A}%
+\contentsline {chapter}{\numberline {B}Hyperparameter Settings}{33}{appendix.B}%

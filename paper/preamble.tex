@@ -1,0 +1,54 @@
+% ============================================================
+% Preamble — packages, macros, formatting
+% ============================================================
+
+% --- Page layout ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{a4paper, margin=2.5cm}
+\usepackage{setspace}
+\onehalfspacing
+
+% --- Math ---
+\usepackage{amsmath, amssymb, amsthm}
+
+% --- Tables ---
+\usepackage{booktabs}
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+% --- Figures ---
+\usepackage{graphicx}
+\usepackage{subcaption}
+\graphicspath{{figures/}}
+
+% --- Colors and links ---
+\usepackage{xcolor}
+\usepackage[colorlinks=true, linkcolor=blue!60!black, citecolor=green!50!black, urlcolor=blue!70!black]{hyperref}
+
+% --- Bibliography ---
+\usepackage[round]{natbib}
+
+% --- Code listings ---
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
+
+% --- Todo notes ---
+\usepackage[textsize=small, color=orange!30]{todonotes}
+% Inline \todo{} already provided by todonotes
+\newcommand{\tabletodo}[1]{\textcolor{red}{\textbf{[#1]}}}
+
+% --- Cross-references ---
+\usepackage[capitalise,noabbrev]{cleveref}
+
+% --- Misc ---
+\usepackage{enumitem}
+\usepackage{microtype}

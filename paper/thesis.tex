@@ -1,0 +1,54 @@
+\documentclass[12pt,a4paper,twoside,openright]{report}
+\input{preamble}
+
+% ============================================================
+% Document metadata
+% ============================================================
+\title{Heterogeneous Graph Neural Networks for\\Transaction-Level Fraud Detection}
+\author{
+  Carl Victor Dahlin Frisell \\[0.3em]
+  \textit{MSc Thesis} \\[0.3em]
+  Copenhagen Business School
+}
+\date{2026}
+
+% ============================================================
+\begin{document}
+
+% --- Front matter ---
+\pagenumbering{roman}
+\maketitle
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+\todo{Write abstract ($\sim$300 words): problem, approach, key results.}
+
+\chapter*{Acknowledgements}
+\addcontentsline{toc}{chapter}{Acknowledgements}
+\todo{Write acknowledgements.}
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+% --- Main matter ---
+\cleardoublepage
+\pagenumbering{arabic}
+
+\input{chapters/01-introduction}
+\input{chapters/02-background}
+\input{chapters/03-data}
+\input{chapters/04-methodology}
+\input{chapters/05-experiments}
+\input{chapters/06-discussion}
+\input{chapters/07-conclusion}
+
+% --- Back matter ---
+\appendix
+\input{appendices/appendix-features}
+\input{appendices/appendix-hyperparams}
+
+\bibliographystyle{apalike}
+\bibliography{references}
+
+\end{document}

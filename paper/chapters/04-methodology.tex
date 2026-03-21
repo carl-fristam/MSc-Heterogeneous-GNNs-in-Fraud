@@ -1,0 +1,168 @@
+% ============================================================
+% Chapter 4 — Methodology
+% ============================================================
+
+\chapter{Methodology}
+\label{chap:methodology}
+
+This chapter describes the experimental ladder---a progression of models that isolates the contribution of graph structure, heterogeneous typing, and self-supervised pretraining to fraud detection.
+
+% ────────────────────────────────────────────────────────────
+\section{Experimental Ladder}
+\label{sec:experimental-ladder}
+
+\begin{description}[style=nextline]
+  \item[L0 — Tabular Baselines]
+    Logistic Regression and XGBoost on transaction features only.
+  \item[L1 — Graph-Augmented Features]
+    Hand-crafted graph features fed to XGBoost.
+  \item[L2 — Homogeneous GNNs and KGE]
+    GCN, GraphSAGE, TransE, and DistMult on a homogeneous graph.
+  \item[L3 — Heterogeneous GNNs]
+    HGT and HMPNN on typed graph variants (V1, V2, TXN\_V1).
+  \item[L4 — Self-Supervised Pretraining]
+    HGMAE and LaundroGraph pretraining, then supervised fine-tuning.
+\end{description}
+
+Each transition answers a specific question:
+L0$\to$L1: does graph structure help?
+L1$\to$L2: do learned representations outperform hand-crafted features?
+L2$\to$L3: does heterogeneous typing improve over homogeneous?
+L3$\to$L4: does self-supervised pretraining add value under label scarcity?
+
+% ────────────────────────────────────────────────────────────
+\section{L0: Tabular Baselines}
+\label{sec:l0}
+
+\paragraph{Logistic Regression.}
+An $\ell_2$-regularised linear classifier with inverse-frequency class weighting, operating on the edge feature vector described in \Cref{sec:feature-engineering}.
+
+\paragraph{XGBoost.}
+A gradient-boosted tree ensemble on the same features, with \texttt{scale\_pos\_weight} set to the inverse class frequency ratio.
+
+% ────────────────────────────────────────────────────────────
+\section{L1: Graph-Augmented Features}
+\label{sec:l1}
+
+The tabular feature vector is augmented with graph statistics computed from the training-period graph: sender/receiver degree, per-account amount statistics (mean, std, total), counterparty diversity, channel entropy, and temporal behaviour ratios (night/weekend proportions). These are concatenated with the edge features and fed to XGBoost.
+
+% ────────────────────────────────────────────────────────────
+\section{L2: Homogeneous Models}
+\label{sec:l2}
+
+\paragraph{GCN.}
+Spectral convolution \citep{kipf2017gcn} with layer-wise propagation:
+\begin{equation}
+  \mathbf{H}^{(l+1)} = \sigma\!\left(\tilde{\mathbf{D}}^{-\frac{1}{2}} \tilde{\mathbf{A}} \tilde{\mathbf{D}}^{-\frac{1}{2}} \mathbf{H}^{(l)} \mathbf{W}^{(l)}\right)
+\end{equation}
+where $\tilde{\mathbf{A}} = \mathbf{A} + \mathbf{I}$. For edge classification, source and target embeddings are concatenated with the edge feature vector and passed through an MLP.
+
+\paragraph{GraphSAGE.}
+Inductive neighbourhood aggregation \citep{hamilton2017sage}:
+\begin{equation}
+  \mathbf{h}_v^{(l+1)} = \sigma\!\left(\mathbf{W}^{(l)} \cdot \mathrm{CONCAT}\!\left(\mathbf{h}_v^{(l)},\; \mathrm{AGG}\!\left(\left\{\mathbf{h}_u^{(l)} : u \in \mathcal{N}(v)\right\}\right)\right)\right)
+\end{equation}
+with a mean aggregator. Its inductive design suits the temporal split, where test nodes may be unseen during training.
+
+\paragraph{TransE.}
+Translational embedding \citep{bordes2013transe}: $\mathbf{h} + \mathbf{r} \approx \mathbf{t}$ for valid triples, trained with margin-based ranking loss.
+
+\paragraph{DistMult.}
+Bilinear scoring \citep{yang2015distmult}: $f(h,r,t) = \mathbf{h}^\top \mathrm{diag}(\mathbf{r})\,\mathbf{t}$, trained with a contrastive objective.
+
+% ────────────────────────────────────────────────────────────
+\section{L3: Heterogeneous GNNs}
+\label{sec:l3}
+
+\subsection{Graph Topology Variants}
+\label{sec:graph-variants}
+
+Three heterogeneous graph constructions are evaluated, each encoding progressively finer type information:
+
+\paragraph{V1 — Onus vs.\ External (2 edge types).}
+\begin{align*}
+  \texttt{InternalAccount} &\xrightarrow{\texttt{onus\_transfer}} \texttt{InternalAccount} \\
+  \texttt{InternalAccount} &\xrightarrow{\texttt{external\_transfer}} \texttt{ExternalAccount}
+\end{align*}
+Transactions are edges; the single distinction is whether sender and receiver share the same bank.
+
+\paragraph{V2 — Payment-Rail Typed (6 edge types).}
+Refines external transfers by payment rail:
+\begin{align*}
+  \texttt{InternalAccount} &\xrightarrow{\texttt{onus\_transfer}} \texttt{InternalAccount} \\
+  \texttt{InternalAccount} &\xrightarrow{\texttt{ext\_realtime}} \texttt{ExternalAccount} \\
+  \texttt{InternalAccount} &\xrightarrow{\texttt{ext\_giro}} \texttt{ExternalAccount} \\
+  \texttt{InternalAccount} &\xrightarrow{\texttt{ext\_future}} \texttt{ExternalAccount} \\
+  \texttt{InternalAccount} &\xrightarrow{\texttt{ext\_salary}} \texttt{ExternalAccount} \\
+  \texttt{InternalAccount} &\xrightarrow{\texttt{ext\_other}} \texttt{ExternalAccount}
+\end{align*}
+This tests whether payment-rail-specific message functions improve detection.
+
+\paragraph{TXN\_V1 — Transactions as Nodes (node classification).}
+\begin{align*}
+  \texttt{InternalAccount} &\xrightarrow{\texttt{sends}} \texttt{Transaction} \\
+  \texttt{Transaction} &\xrightarrow{\texttt{received\_by\_internal}} \texttt{InternalAccount} \\
+  \texttt{Transaction} &\xrightarrow{\texttt{received\_by\_external}} \texttt{ExternalAccount}
+\end{align*}
+Transactions become nodes with their own feature vectors, enabling direct node classification and richer message passing between accounts and transactions.
+
+\subsection{Heterogeneous Graph Transformer (HGT)}
+
+HGT \citep{hu2020hgt} uses type-dependent projections for attention:
+\begin{equation}
+  \mathbf{Q}_i = \mathbf{W}^Q_{\tau(t)} \mathbf{h}_t, \quad
+  \mathbf{K}_i = \mathbf{W}^K_{\tau(s)} \mathbf{h}_s, \quad
+  \mathbf{V}_i = \mathbf{W}^V_{\tau(s)} \mathbf{h}_s
+\end{equation}
+where $\tau(\cdot)$ denotes node type. Attention is computed per meta-relation $(\tau(s), \phi(e), \tau(t))$, learning type-specific importance. For edge classification, source and target embeddings are concatenated with edge features and classified by an MLP.
+
+\subsection{HMPNN}
+
+The Heterogeneous Message Passing Neural Network \citep{johannessen2023hmpnn} uses edge-type-specific message functions incorporating edge features:
+\begin{equation}
+  \mathbf{m}_{s \to t} = \mathrm{MLP}_{\phi(e)}\!\left(\mathrm{CONCAT}\!\left(\mathbf{h}_s,\; \mathbf{e}_{s,t}\right)\right)
+\end{equation}
+Messages are mean-pooled per edge type, then summed across types to update target embeddings.
+
+% ────────────────────────────────────────────────────────────
+\section{L4: Self-Supervised Pretraining}
+\label{sec:l4}
+
+\subsection{Motivation}
+\label{sec:l4-motivation}
+
+Confirmed fraud accounts for approximately \todo{FILL}\% of transactions, so the supervised loss is dominated by the legitimate class and the encoder receives meaningful fraud gradient on only a small fraction of steps. Self-supervised pretraining lets the encoder learn from \emph{all} transactions equally before fraud-specific fine-tuning.
+
+Three lines of prior work motivate this level.
+\citet{rao2022xfraud} validate HGT as an encoder for production-scale fraud detection.
+Autoencoder-based fraud detection \citep{pumsirirat2018autoencoder, singh2024hetero} shows that reconstruction objectives capture anomalous patterns---fraudulent transactions produce higher reconstruction error.
+\citet{tian2023hgmae} combine masked autoencoding with heterogeneous structure, achieving strong node classification via type-aware masking.
+L4 combines these ideas: HGMAE-style pretraining on a heterogeneous transaction graph, then supervised fine-tuning. The ladder design ensures that any gain over L3 with the \emph{same} encoder is attributable to pretraining alone.
+
+\subsection{HGMAE}
+
+The Heterogeneous Graph Masked Autoencoder \citep{tian2023hgmae} optimises three objectives: (1) metapath-based edge reconstruction with semantic attention, (2) masked node feature restoration with adaptive masking, and (3) positional feature prediction via metapath2vec encodings. After pretraining, encoder weights initialise a downstream classifier fine-tuned on labelled fraud data.
+
+\subsection{LaundroGraph}
+
+Following \citet{cardoso2022laundrograph}, a GAT encoder learns embeddings via self-supervised link prediction on held-out edges. The resulting representations serve as input to a downstream classifier.
+
+\todo{FILL: finalise L4 implementation details as they stabilise.}
+
+% ────────────────────────────────────────────────────────────
+\section{Training Protocol}
+\label{sec:training-protocol}
+
+All neural models share a common protocol:
+\begin{itemize}[nosep]
+  \item Adam optimiser ($\beta_1 = 0.9$, $\beta_2 = 0.999$), learning rate \todo{FILL}
+  \item Binary cross-entropy with inverse-frequency class weighting
+  \item Early stopping: patience \todo{FILL} epochs on validation PR-AUC
+  \item Full-batch training (graph fits in memory)
+\end{itemize}
+
+% ────────────────────────────────────────────────────────────
+\section{Evaluation Framework}
+\label{sec:eval-framework}
+
+The primary metric is \textbf{PR-AUC}, which directly measures the precision--recall tradeoff under extreme class imbalance. Secondary metrics: AUC-ROC, F1 at optimal threshold, and false positives per true positive (operational cost). All metrics are computed on the temporally held-out test split.

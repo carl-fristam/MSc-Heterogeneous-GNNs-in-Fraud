@@ -91,15 +91,22 @@ def run_l2(prep, config, task="node", conv_type="sage", **kwargs):
     return trainer.run()
 
 
-def run_l4(prep, config, model_name="hgmae", **kwargs):
+def run_l4(prep, config, task="node", model_name="hgmae", **kwargs):
     """L4: Self-supervised pretraining → downstream classifier."""
-    from src.graph_pipeline_bank import build_graph
     from src.self_supervised.pretrain_trainer import PretrainTrainer
 
     device = get_device()
-    result = build_graph(config, prep=prep)
-    data = result["data"]
 
+    if task == "node":
+        from src.graph_pipeline_bank_txn import build_graph
+        result = build_graph(config, prep=prep)
+        target_node_type = "transaction"
+    else:
+        from src.graph_pipeline_bank import build_graph
+        result = build_graph(config, prep=prep)
+        target_node_type = "internal_account"
+
+    data = result["data"]
     hidden_dim = kwargs.get("hidden_dim", 64)
 
     if model_name == "hgmae":
@@ -131,6 +138,8 @@ def run_l4(prep, config, model_name="hgmae", **kwargs):
 
     trainer = PretrainTrainer(
         ssl_model, data, device,
+        task=task,
+        target_node_type=target_node_type,
         hidden_dim=hidden_dim,
         pretrain_epochs=pretrain_epochs,
         pretrain_lr=kwargs.get("lr", 1e-3),
@@ -364,7 +373,7 @@ def main():
     elif args.level == 3:
         results = run_l3(prep, config, task=args.task, model_name=args.model, **model_kwargs)
     elif args.level == 4:
-        results = run_l4(prep, config, model_name=args.model, **model_kwargs)
+        results = run_l4(prep, config, task=args.task, model_name=args.model, **model_kwargs)
 
     # Save
     save_kwargs = {
