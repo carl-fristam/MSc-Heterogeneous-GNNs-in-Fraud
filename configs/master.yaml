@@ -170,3 +170,21 @@ variants:
         src: transaction
         dst: external_account
         filter: "TRANSACTIONONUS == False"
+
+
+# ==============================================================================
+# L4: Self-supervised pretraining settings
+# ==============================================================================
+
+l4:
+  hgmae:
+    feat_mask_rate: 0.5
+    edge_mask_rate: 0.3
+    edge_recon_weight: 1.0
+    pretrain_epochs: 200
+    pretrain_patience: 20
+
+  laundrograph:
+    num_neg_samples: 5
+    pretrain_epochs: 200
+    pretrain_patience: 20

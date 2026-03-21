@@ -1,34 +1,40 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Project Overview
 
-MSc thesis project: **Heterogeneous Graph Neural Networks for Transaction-Level Fraud Detection** on Danske Bank retail payment data (~1.5M transactions, 0.14% fraud rate).
+MSc thesis project: **Heterogeneous Graph Neural Networks for Transaction-Level Fraud Detection** on Danske Bank retail payment data (~3M transactions, ~0.3% fraud rate).
 
 Core research question: _Does preserving heterogeneous structure in a transaction graph improve fraud detection over simpler representations?_
 
+## Graph Signal
+
+Fraud network analysis confirms exploitable graph structure:
+- **12.4x enrichment**: accounts in the 1-hop fraud neighborhood are 12x more likely to be fraud senders vs baseline
+- **31.6% repeat offenders**: nearly a third of fraud senders commit multiple fraud transactions
+- **32k accounts** send to a fraud receiver; 1,049 of those are fraud senders themselves
+- This justifies the GNN approach — neighbor context carries signal
+
 ## Experimental Ladder
 
-| Level  | What                                             | Code                              |
-| ------ | ------------------------------------------------ | --------------------------------- |
-| **L0** | Tabular baselines (LR, XGBoost) — no graph       | `src/baselines/tabular.py`        |
-| **L1** | Graph features → XGBoost — structure without NNs | `src/baselines/graph_features.py` |
-| **L2** | Homogeneous GNN (GCN, GraphSAGE)                 | `src/graph_homogeneous/`          |
-| **L3** | Heterogeneous GNN (HGT, HMPNN)                   | `src/hgt/`, `src/hmpnn/`          |
+| Level  | What                                         | Code                                         |
+| ------ | -------------------------------------------- | -------------------------------------------- |
+| **L0** | Tabular baselines (LR, XGBoost)              | `src/baselines/tabular.py`                   |
+| **L1** | Graph features → XGBoost                     | `src/baselines/graph_features.py`            |
+| **L2** | Homogeneous (GCN, SAGE, TransE, DistMult)    | `src/homogeneous/`                           |
+| **L3** | Heterogeneous GNN (HGT, HMPNN)               | `src/heterogeneous/hgt/`, `src/heterogeneous/hmpnn/` |
 
 L0→L1: does graph structure help at all?
-L1→L2: do GNNs learn better representations than hand-crafted graph features?
+L1→L2: do GNNs/KGE learn better representations than hand-crafted graph features?
 L2→L3: does heterogeneous typing improve over homogeneous?
-V1→V2→V3: which heterogeneous design choices matter?
+V1→V2: which heterogeneous design choices matter?
 
-Both **node classification** (transactions as nodes) and **edge classification** (transactions as edges) are supported. We test both formulations and commit to whichever performs better.
+Both **node classification** (transactions as nodes) and **edge classification** (transactions as edges) are supported.
 
 ## Running Experiments
 
 ```bash
-source .venv/bin/activate   # Python 3.14
-
 # L0: Tabular baselines
 python run.py --level 0
 
@@ -36,192 +42,150 @@ python run.py --level 0
 python run.py --level 1
 
 # L2: Homogeneous GNN
-python run.py --level 2 --task node --conv sage
-python run.py --level 2 --task edge --conv gcn
+python run.py --level 2 --task edge --conv sage --epochs 200
+python run.py --level 2 --task edge --conv gcn --epochs 200
+python run.py --level 2 --task node --conv sage --epochs 200
+
+# L2: KGE baselines (edge classification only)
+python run.py --level 2 --task edge --conv transe --epochs 500 --patience 50
+python run.py --level 2 --task edge --conv distmult --epochs 500 --patience 50
 
 # L3: Heterogeneous GNN
-python run.py --level 3 --task node --model hgt --variant txn_v1
-python run.py --level 3 --task edge --model hgt --variant v1
-python run.py --level 3 --task edge --model hmpnn --variant v2
+python run.py --level 3 --task edge --model hgt --variant v1 --epochs 300 --patience 40
+python run.py --level 3 --task edge --model hgt --variant v2 --epochs 300 --patience 40
+python run.py --level 3 --task edge --model hmpnn --variant v1 --epochs 300 --patience 40
+python run.py --level 3 --task node --model hgt --variant txn_v1 --epochs 300 --patience 40
 
-# Dev mode (1% sample)
-python run.py --level 3 --task edge --model hgt --variant v1 --sample 0.01
+# Dev mode (5% sample)
+python run.py --level 2 --task edge --conv sage --sample 0.05 --epochs 10
 ```
 
-Key dependencies: `torch`, `torch-geometric`, `torch_scatter`, `torch_sparse`, `scikit-learn`, `pandas`, `numpy`, `xgboost`.
+Primary metric: **PR-AUC** (precision-recall area under curve). Secondary: AUROC, operational metrics (false positives per true positive).
 
-Primary metric: **PR-AUC** (precision-recall area under curve). Secondary: operational metrics (false positives per true positive).
+## Code Structure & Conventions
 
----
-
-## Bank Dataset — Danske Bank Retail Payments
-
-### Data dictionary
-
-1,502,051 retail payment transactions. Labels joined from a separate fraud table: `CONFIRMED_RISK = 1` means confirmed fraud (2,051 cases, 0.14%), `0` means absent from the fraud table (not a confirmed negative). Official column definitions:
-
-| Column               | Type          | Remarks                                                                                   |
-| -------------------- | ------------- | ----------------------------------------------------------------------------------------- |
-| `ACCAGENTCOUNTRY`    | CHAR(2)       | Debit country (ISO2)                                                                      |
-| `ACCOUNTAGENTID`     | CHAR(8)       | BIC — hardcoded values per country (8 unique values)                                      |
-| `ACCOUNTBRANCHID`    | CHAR(4)       | Branch of account                                                                         |
-| `ACCOUNTENTITYID`    | CHAR(34)      | Debit account (IBAN format in most cases) — same as ACCOUNTID                             |
-| `ACCOUNTID`          | CHAR(34)      | Debit account (IBAN format in most cases) — primary sender key                            |
-| `ACCOUNTIDFORMAT`    | VARCHAR(5)    | Debit account format (IBAN or BBAN)                                                       |
-| `VALUE`              | DECIMAL(15,2) | Original transaction value                                                                |
-| `CURRENCY`           | CHAR(3)       | Original currency                                                                         |
-| `BASEVALUE`          | DECIMAL(15,2) | Value converted to EUR                                                                    |
-| `BASECURRENCY`       | CHAR(3)       | Always EUR                                                                                |
-| `CHANNEL`            | VARCHAR(15)   | Payment channel                                                                           |
-| `COUNTERAGENTID`     | CHAR(11)      | Counterparty bank BIC (3,502 unique values)                                               |
-| `COUNTERBRANCHID`    | CHAR(11)      | Counterparty branch ID                                                                    |
-| `COUNTERENTITYID`    | CHAR(34)      | Counterparty account (IBAN where possible) — primary receiver key                         |
-| `COUNTERPARTYID`     | CHAR(34)      | Same as COUNTERENTITYID — redundant, drop                                                 |
-| `COUNTERIDFORMAT`    | CHAR(4)       | Counterparty account format (IBAN or BBAN)                                                |
-| `CUSTOMERENTITYID`   | CHAR(10)      | Customer number (internal) — same as CUSTOMERID                                           |
-| `CUSTOMERID`         | CHAR(10)      | Customer number (internal) — near 1:1 with ACCOUNTID                                      |
-| `CUSTOMERTYPE`       | CHAR(6)       | retail or busine (business)                                                               |
-| `DESTINATIONCOUNTRY` | CHAR(2)       | Destination country — creditor (ISO2)                                                     |
-| `IPADDRESS`          | CHAR(15)      | IP address (IPv4)                                                                         |
-| `USERAGENTSTRING`    | VARCHAR(384)  | Browser/app user agent string                                                             |
-| `DEVICEENTITYID`     | VARCHAR(88)   | Device ID — same as DEVICEID, redundant                                                   |
-| `DEVICEID`           | VARCHAR(88)   | Device used to initiate the transaction (475k unique, no nulls)                           |
-| `EVENTTIME`          | TIMESTAMP     | When payment was initiated — primary timestamp                                            |
-| `MSGSTATUS`          | CHAR(3)       | Hardcoded "new" — zero variance, drop                                                     |
-| `PAYMENTCLEARING`    | CHAR(7)       | Clearing speed/urgency. Express = customer pays premium for speed                         |
-| `PAYMENTMETHOD`      | CHAR(6)       | Payment method (online / file / bulk)                                                     |
-| `PAYMENTSUBMETHOD`   | VARCHAR(15)   | Payment rail (realTime, bankGiro, plusGiro, futurePayment, salary, chaps, accountClosure) |
-| `TRANSACTIONID`      | CHAR(26)      | Unique transaction identifier — join key only                                             |
-| `TRANSACTIONONUS`    | VARCHAR(5)    | true = Danske-to-Danske transfer; false = external bank                                   |
-| `EXCEPTIONRULE`      | VARCHAR(78)   | Hardcoded "noException" — zero variance, drop                                             |
-| `INTERNATIONALFLAG`  | CHAR(5)       | true if debit country ≠ destination country                                               |
-| `CONFIRMED_RISK`     | INT           | **Label.** 1 = confirmed fraud (from fraud labels table); 0 = not in fraud table          |
-
-**Key observations:**
-
-- `TRANSACTIONONUS = false` means external bank — confirmed. Fraud rate: 0.15% external vs 0.087% on-us (~1.7× riskier)
-- `BASECURRENCY` is always EUR — `BASEVALUE` is always the EUR-converted amount
-- `EXCEPTIONRULE` and `MSGSTATUS` are hardcoded constants — zero variance, safe to drop
-- `COUNTERPARTYID` = `COUNTERENTITYID` and `DEVICEENTITYID` = `DEVICEID` — confirmed redundant pairs
-- `CONFIRMED_RISK = 0` is absence from the fraud table, not a confirmed negative
-
----
-
-## Graph Pipelines
-
-### Heterogeneous edge classification — `src/graph_pipeline_bank/`
-
-Transactions are **edges** between account nodes. Config-driven pipeline.
-
-```python
-from src.utils.config import load_config
-from src.graph_pipeline_bank import build_graph
-result = build_graph(load_config("graph_bank_v1"))
-data = result["data"]       # PyG HeteroData
-```
-
-**Pipeline steps:**
-
-1. Loads parquet/CSV, drops redundant/zero-variance/leaky columns declared in config
-2. Parses `EVENTTIME`, normalises `TRANSACTIONONUS` to bool, sorts chronologically
-3. Applies optional sampling (random fraction or first N days)
-4. Splits chronologically into train/val/test by cutoff dates
-5. Builds node mappings: `InternalAccount`, `ExternalAccount`, optionally `Device`
-6. Computes node features — **all aggregations use training rows only** to prevent temporal leakage
-7. Routes transaction rows to edge relation types by `.query()` filters in config
-8. Builds per-relation `edge_index`, `edge_attr`, `y`, masks
-9. Assembles PyG `HeteroData` and pickles to cache
-
-### Heterogeneous node classification — `src/graph_pipeline_bank_txn/`
-
-Transactions are **nodes**. Account nodes are structural.
-
-```python
-from src.graph_pipeline_bank_txn import build_graph
-result = build_graph(load_config("graph_bank_txn_v1"))
-```
-
-### Homogeneous graph — `src/graph_homogeneous/`
-
-All accounts collapsed into one type, all transactions into one edge/node type.
-
-```python
-from src.graph_homogeneous.builder import build_homogeneous_graph
-result = build_homogeneous_graph(load_config("graph_bank_v1"), mode="node")  # or "edge"
-```
-
-### Heterogeneous graph variants (edge classification)
-
-**V1 — Baseline: onus / external split (`graph_bank_v1.yaml`)**
+### Directory layout — code and results live together
 
 ```
-InternalAccount ──[onus_transfer]────► InternalAccount   TRANSACTIONONUS=True  (21.2%)
-InternalAccount ──[external_transfer]► ExternalAccount   TRANSACTIONONUS=False (78.8%)
+src/
+  baselines/
+    tabular.py                # L0: LR, XGBoost
+    tabular/results/          # L0 results land here
+    graph_features.py         # L1: graph features → XGBoost
+    graph_features/results/   # L1 results land here
+  homogeneous/                # L2
+    builder.py                # homogeneous graph construction (node or edge mode)
+    models.py                 # GCN, GraphSAGE (supports edge_attr in edge mode)
+    kge_models.py             # TransE, DistMult
+    gcn/results/              # GCN results
+    sage/results/             # SAGE results
+    transe/results/           # TransE results
+    distmult/results/         # DistMult results
+  heterogeneous/              # L3
+    hgt/
+      model.py                # HGTConv wrapper
+      train.py                # thin wrapper around unified Trainer
+      results/                # HGT results
+    hmpnn/
+      model.py                # NNConv + HeteroConv
+      results/                # HMPNN results
+  graph_pipeline_bank/        # hetero edge classification graph construction
+    loader.py                 # load parquet, parse dates, truncate, sample
+    node_builder.py           # build node ID mappings
+    features_node.py          # @register_*_feature decorators for node features
+    features_edge.py          # @register_edge_feature for transaction features
+    edge_builder.py           # filter → edge_index + edge_attr + labels + masks
+    normalize.py              # zscore, one_hot, vocab utilities
+    builder.py                # orchestrator → HeteroData
+  graph_pipeline_bank_txn/    # hetero node classification graph construction
+    builder.py                # transactions as nodes variant
+  training/
+    trainer.py                # unified Trainer: all model/task/graph combos
+  data/
+    prepare.py                # PreparedData — single entry point for all levels
+  utils/
+    config.py                 # load_config(), load_variant(), PROJECT_ROOT
+    device.py                 # get_device() — MPS/CUDA/CPU
+    class_weights.py          # inverse-frequency weighting
+    split.py                  # temporal_split(), random_stratified_split()
+    compat.py                 # PyG API compatibility patches
+scripts/
+  viz_topology.py             # generate topology figures for thesis
+  fraud_network_analysis.py   # analyze graph signal in fraud data
+configs/
+  master.yaml                 # single source of truth for all variants
 ```
 
-**V2 — Payment rail typed edges (`graph_bank_v2.yaml`)**
+### Key conventions
 
-```
-InternalAccount ──[onus_transfer]────► InternalAccount   TRANSACTIONONUS=True
-InternalAccount ──[ext_realtime]─────► ExternalAccount   realTime
-InternalAccount ──[ext_giro]─────────► ExternalAccount   bankGiro|plusGiro
-InternalAccount ──[ext_future]───────► ExternalAccount   futurePayment
-InternalAccount ──[ext_salary]───────► ExternalAccount   salary
-InternalAccount ──[ext_other]────────► ExternalAccount   remaining submethods
-```
+- **Results live next to code**: each model type has a `results/` subfolder. Results are saved as timestamped folders containing `metrics.json` + `report.md`.
+- **New models/pipelines follow the same pattern**: code in the relevant `src/` subfolder, results in a `results/` subfolder next to it.
+- **Single config**: `configs/master.yaml` is the command center. All data paths, column mappings, feature lists, split dates, and graph variants are defined there. `load_variant()` merges shared settings with variant-specific topology.
+- **PreparedData**: `src/data/prepare.py` loads and prepares data once. All levels consume the same `PreparedData` object.
+- **Graph caching**: built graphs are pickled to `data/processed/bank/` with names encoding variant and sample ratio. Clear cache when data or features change.
+- **Topology figures**: `python scripts/viz_topology.py --all` generates PDFs in `outputs/topology/`.
 
-**V3 — Device node type added (`graph_bank_v3.yaml`)**
+## Config — `configs/master.yaml`
 
+The master config defines:
+- `data_path`: path to parquet file
+- `truncate_after`: drop rows after this date (fraud labels only cover early period)
+- `split`: temporal split cutoff dates
+- `columns`: mapping of semantic roles to column names
+- `edge_features`: list of transaction-level features
+- `node_features`: per-node-type feature definitions
+- `variants`: graph topology definitions (v1, v2, txn_v1)
+
+### Current variants
+
+**V1** — onus vs external (2 edge types):
 ```
 InternalAccount ──[onus_transfer]────► InternalAccount
 InternalAccount ──[external_transfer]► ExternalAccount
-InternalAccount ──[uses_device]──────► Device            (structural, no labels)
 ```
 
-### `src/utils/`
+**V2** — payment rail typed edges (6 edge types):
+```
+InternalAccount ──[onus_transfer]────► InternalAccount
+InternalAccount ──[ext_realtime]─────► ExternalAccount
+InternalAccount ──[ext_giro]─────────► ExternalAccount
+InternalAccount ──[ext_future]───────► ExternalAccount
+InternalAccount ──[ext_salary]───────► ExternalAccount
+InternalAccount ──[ext_other]────────► ExternalAccount
+```
 
-- `config.py` — `load_config(name)` loads `configs/{name}.yaml`; exports `PROJECT_ROOT`
-- `device.py` — `get_device()` for MPS/CUDA/CPU
-- `class_weights.py` — `compute_class_weights()` for imbalanced labels
-- `split.py` — `temporal_split()`, `random_stratified_split()`
-- `compat.py` — `apply_pyg_compat_patch()` for PyG API fixes
+**TXN_V1** — transactions as nodes (node classification):
+```
+InternalAccount ──[sends]──────────────► Transaction
+Transaction ──[received_by_internal]──► InternalAccount
+Transaction ──[received_by_external]──► ExternalAccount
+```
 
-### `src/references/` — read-only upstream implementations
+## Data
 
-Do not modify. Reference only.
+- Dataset: `datasets/TRANSACTIONS_almost_clean.parquet` (~3M rows)
+- Fraud labels only cover Sep–Dec 2024; data truncated to 2024-12-31
+- Temporal split: train before Nov 20, val Nov 20–Dec 10, test Dec 10–Dec 31
+- Label column: `CONFIRMEDRISK` (boolean True/False)
 
----
+### Current columns in cleaned dataset
+
+`ACCOUNTAGENTID`, `ACCOUNTBRANCHID`, `ACCOUNTENTITYID`, `ACCOUNTID`, `ACCOUNTIDFORMAT`, `CURRENCY`, `BASEVALUE`, `CHANNEL`, `COUNTERAGENTID`, `COUNTERBRANCHID`, `COUNTERENTITYID`, `COUNTERPARTYID`, `COUNTERIDFORMAT`, `CUSTOMERENTITYID`, `CUSTOMERID`, `DESTINATIONCOUNTRY`, `EVENTTIME`, `PAYMENTCLEARING`, `PAYMENTSUBMETHOD`, `TRANSACTIONONUS`, `INTERNATIONALFLAG`, `CONFIRMEDRISK`, `ACCOUNTBRANCH_TBE`
+
+### Edge / transaction features
+
+log1p BASEVALUE (z-scored), channel OHE, submethod OHE, clearing express flag, international flag, branch TBE OHE, sin/cos time encoding (hour + day-of-week)
+
+### Node features (train-only aggregation)
+
+- **InternalAccount**: out-degree, amount stats (mean/std/total sent, log1p), counterparty diversity, channel diversity, time behavior (night/weekend ratios)
+- **ExternalAccount**: in-degree, received amount stats, sender diversity, sender bank diversity
 
 ## Data & Output Paths (gitignored)
 
-| Path                                 | Contents                     |
-| ------------------------------------ | ---------------------------- |
-| `datasets/bank_transactions.parquet` | Bank dataset                 |
-| `data/processed/`                    | Cached PyG graph objects     |
-| `outputs/`                           | EDA outputs, data dictionary |
-| `models/`                            | Saved model checkpoints      |
-| `results/`                           | Experiment result JSON logs  |
-
-## Node features (train-only aggregation)
-
-- `InternalAccount`: out-degree, sent amount stats (mean/std/total, log1p), unique receivers, unique devices used, unique channels, night/weekend transaction ratios, customer type OHE
-- `ExternalAccount`: in-degree, received amount stats, unique senders, unique sending banks
-- `Device` (V3 only): transaction count, unique accounts per device
-
-## Edge / transaction features (per-row, all splits)
-
-log1p VALUE and BASEVALUE (z-scored), currency mismatch flag, channel/method/submethod/clearing OHE (vocab from training), international flag, sin/cos time encoding (hour-of-day + day-of-week)
-
-## Columns dropped in all variants
-
-| Column                                | Reason                                           |
-| ------------------------------------- | ------------------------------------------------ |
-| `COUNTERPARTYID`                      | Identical to `COUNTERENTITYID`                   |
-| `ACCOUNTENTITYID`                     | Same as `ACCOUNTID`                              |
-| `CUSTOMERENTITYID`                    | Same as `CUSTOMERID`                             |
-| `DEVICEENTITYID`                      | Same as `DEVICEID`                               |
-| `CUSTOMERID`                          | Near 1:1 with `ACCOUNTID`; no Customer node type |
-| `MSGSTATUS`                           | Hardcoded "new"                                  |
-| `EXCEPTIONRULE`                       | Hardcoded "noException"                          |
-| `ACCOUNTIDFORMAT` / `COUNTERIDFORMAT` | Format metadata, not predictive                  |
-| `ACCOUNTBRANCHID` / `COUNTERBRANCHID` | Subsumed by agent IDs                            |
+| Path                    | Contents                       |
+| ----------------------- | ------------------------------ |
+| `datasets/`             | Parquet data files             |
+| `data/processed/bank/`  | Cached PyG graph objects (.pkl)|
+| `outputs/topology/`     | Topology visualization PDFs    |
+| `src/*/results/`        | Experiment results per model   |
