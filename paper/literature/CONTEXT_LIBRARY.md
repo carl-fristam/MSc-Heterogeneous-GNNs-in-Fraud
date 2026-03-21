@@ -7,15 +7,40 @@
 
 ## Table of Contents
 
-1. [Core GNN-for-AML Papers](#core-gnn-for-aml-papers)
-2. [Datasets & Benchmarks](#datasets--benchmarks)
-3. [Heterogeneous & Knowledge Graph Approaches](#heterogeneous--knowledge-graph-approaches)
-4. [Self-Supervised & Unsupervised Methods](#self-supervised--unsupervised-methods)
-5. [Surveys & Reviews](#surveys--reviews)
-6. [Traditional ML for AML](#traditional-ml-for-aml)
-7. [Industry & Practitioner Resources](#industry--practitioner-resources)
-8. [Explainability & Compliance](#explainability--compliance)
-9. [Tooling & Methodology](#tooling--methodology)
+1. [Foundational Graph Methods](#foundational-graph-methods)
+2. [Core GNN-for-AML Papers](#core-gnn-for-aml-papers)
+3. [Datasets & Benchmarks](#datasets--benchmarks)
+4. [Heterogeneous & Knowledge Graph Approaches](#heterogeneous--knowledge-graph-approaches)
+5. [Self-Supervised & Unsupervised Methods](#self-supervised--unsupervised-methods)
+6. [Surveys & Reviews](#surveys--reviews)
+7. [Traditional ML for AML](#traditional-ml-for-aml)
+8. [Industry & Practitioner Resources](#industry--practitioner-resources)
+9. [Explainability & Compliance](#explainability--compliance)
+10. [Tooling & Methodology](#tooling--methodology)
+
+---
+
+## Foundational Graph Methods
+
+### Heterogeneous Graph Transformer (HGT)
+- **Authors:** Ziniu Hu, Yuxiao Dong, Kuansan Wang, Yizhou Sun
+- **Year:** 2020
+- **Source:** [WWW 2020 / arXiv:2003.01332](https://arxiv.org/abs/2003.01332) · PDF in `HU ET AL..pdf`
+- **Key Points:**
+  - Attention-based architecture for heterogeneous graphs with node- and edge-type-dependent attention
+  - Scales to large heterogeneous graphs
+  - Foundation for heterogeneous graph representation learning
+- **Relevance:** Core — foundational architecture for heterogeneous graph learning, underpins HAN/HGMAE-style approaches
+
+### Heterogeneous Graph Masked Autoencoders (HGMAE)
+- **Authors:** Yijun Tian, Kaiwen Dong, Chunhui Zhang, Chuxu Zhang, Nitesh V. Chawla
+- **Year:** 2022 (AAAI 2023 oral)
+- **Source:** [AAAI 2023 / arXiv:2208.09957](https://arxiv.org/abs/2208.09957) · PDF in `TIAN ET AL..pdf`
+- **Key Points:**
+  - Self-supervised pretraining on heterogeneous graphs using masked autoencoding
+  - Masks and reconstructs node features and graph structure
+  - Primary method implemented and extended to AML in this thesis
+- **Relevance:** Core — our primary method
 
 ---
 

@@ -1,0 +1,39 @@
+\chapter{Introduction}
+\label{chap:introduction}
+
+\section{Motivation}
+\label{sec:motivation}
+
+Rule-based transaction monitoring systems in retail banking produce false positive rates of 95--98\% \citep{gerlings2023xai, cardoso2022laundrograph}. The vast majority of flagged transactions are legitimate, consuming investigator time that could be spent on genuine fraud.
+
+Transaction data is inherently relational --- senders, receivers, and payment rails form a network. Fraudulent activity often manifests as structural anomalies in this network rather than in individual transaction features. Prior analysis of the dataset used in this thesis confirms exploitable graph signal: accounts in the 1-hop neighbourhood of known fraud senders are over 12 times more likely to be fraud senders themselves.
+
+This thesis investigates whether graph neural networks --- and specifically \textit{heterogeneous} GNNs that preserve entity and relation types --- can exploit this structural signal to improve fraud detection on real banking data. A secondary question is whether self-supervised pretraining can address the severe label scarcity inherent in fraud data, where labels reflect only \textit{detected} fraud.
+
+\section{Hypotheses}
+\label{sec:hypotheses}
+
+\begin{description}[style=nextline]
+  \item[H1] Heterogeneous GNNs achieve a better precision-recall tradeoff than tabular baselines on the same transaction data.
+  \item[H2] Self-supervised pretraining (HGMAE) on the unlabeled transaction graph produces representations that improve downstream fraud detection despite incomplete labels.
+  \item[H3] Combining self-supervised pretraining with a heterogeneous classifier outperforms either approach alone under label scarcity.
+\end{description}
+
+\section{Contributions}
+\label{sec:contributions}
+
+\begin{enumerate}[nosep]
+  \item A controlled experimental ladder (L0--L4) isolating the marginal contribution of graph structure, heterogeneous typing, and self-supervised pretraining on real banking data.
+  \item The first application of HGMAE to financial transaction data.
+  \item A comparison of three heterogeneous graph topologies encoding different levels of structural detail.
+\end{enumerate}
+
+\section{Thesis Outline}
+\label{sec:outline}
+
+\Cref{chap:background} reviews related work.
+\Cref{chap:data} describes the dataset and feature engineering.
+\Cref{chap:methodology} presents the experimental ladder.
+\Cref{chap:experiments} reports results.
+\Cref{chap:discussion} discusses findings.
+\Cref{chap:conclusion} concludes.

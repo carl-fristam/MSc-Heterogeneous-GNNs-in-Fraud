@@ -1,0 +1,59 @@
+\chapter{Background and Related Work}
+\label{chap:background}
+
+\section{Transaction Fraud Detection}
+\label{sec:fraud-detection}
+
+Financial fraud causes estimated global losses exceeding \$1.8 trillion annually \citep{vallarino2025fraud}. Legacy rule-based monitoring systems generate false positive rates above 95\% \citep{gerlings2023xai, cardoso2022laundrograph}, creating an enormous operational burden. Machine learning approaches --- first tabular, then graph-based --- have been pursued to reduce this burden while maintaining detection quality.
+
+\section{Tabular Machine Learning}
+\label{sec:trad-ml}
+
+Random forests, XGBoost, and logistic regression are standard baselines for transaction-level fraud classification \citep{cheng2024survey}. These models operate on hand-engineered features (amounts, frequencies, counterparty statistics) and treat each transaction independently, discarding relational context. A transaction that appears benign in isolation may be part of a broader fraudulent pattern visible only through network structure.
+
+\section{Graph Representations}
+\label{sec:graph-representations}
+
+Transaction data naturally forms a directed graph: accounts as nodes, transactions as edges. \citet{johannessen2023hmpnn} argue that fraud patterns are often invisible without relational context. Two strategies exist for exploiting graph structure:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Explicit graph features}: compute structural statistics (degree, centrality, neighbourhood aggregates) and feed them to a tabular classifier. \citet{nasereddin2021alert} reduced false positives by 80\% using this approach with LightGBM.
+  \item \textbf{End-to-end GNNs}: learn representations directly from graph structure. \citet{cardoso2022laundrograph} show that learned embeddings outperform hand-crafted graph features.
+\end{enumerate}
+
+Real banking data is inherently heterogeneous --- multiple entity types (internal accounts, external accounts, merchants) connected through diverse relation types. Homogeneous graphs discard these distinctions.
+
+\section{Graph Neural Networks}
+\label{sec:gnns}
+
+GCNs \citep{kipf2017gcn} aggregate neighbourhood information via spectral convolutions. GraphSAGE \citep{hamilton2017sage} extends this inductively through neighbourhood sampling. Both treat all nodes and edges as identical, limiting their applicability to multi-relational financial data. GCNs also suffer from over-smoothing at depth \citep{cheng2024survey}.
+
+Knowledge graph embedding methods --- TransE \citep{bordes2013transe} and DistMult \citep{yang2015distmult} --- learn entity and relation embeddings from graph topology but do not incorporate edge features like transaction amounts.
+
+\section{Heterogeneous GNNs}
+\label{sec:hetero-gnns}
+
+\textbf{HGT} \citep{hu2020hgt} uses type-dependent attention with separate projections per meta-relation triplet (source type, edge type, target type). \citet{rao2022xfraud} applied HGT to eBay fraud detection at scale (1.1B nodes, AUC 0.91).
+
+\textbf{HMPNN} \citep{johannessen2023hmpnn} introduces edge-type-specific message functions incorporating edge features --- amounts, timestamps, currency --- on real banking data from DNB (5M+ nodes, 10M+ edges). This is the closest prior work to our setting.
+
+\citet{singh2024hetero} trained a heterogeneous graph autoencoder for credit card fraud (AUC-PR 0.89), learning normal behaviour without fraud labels.
+
+\section{Self-Supervised Graph Learning}
+\label{sec:self-supervised}
+
+Fraud labels are scarce and incomplete: they reflect only \textit{detected} fraud. Self-supervised methods learn from the full unlabeled graph.
+
+\textbf{LaundroGraph} \citep{cardoso2022laundrograph} uses self-supervised link prediction on a homogeneous bipartite graph, outperforming LightGBM by 12 percentage points in AUC. However, it operates on a single edge type, discarding heterogeneous structure.
+
+\textbf{HGMAE} \citep{tian2023hgmae} extends masked autoencoding to heterogeneous graphs via metapath-based edge reconstruction, attribute restoration, and positional feature prediction. It achieves state-of-the-art self-supervised performance on academic benchmarks but has not been applied to financial data.
+
+\section{Evaluation Under Class Imbalance}
+\label{sec:evaluation-metrics}
+
+With fraud rates well below 1\%, accuracy is uninformative. AUC-ROC is widely reported but can be optimistic under severe imbalance. PR-AUC directly measures the precision-recall tradeoff and is the primary metric in this thesis. \citet{nasereddin2021alert} argue that false positive reduction is the operationally relevant metric.
+
+\section{Research Gap}
+\label{sec:research-gap}
+
+Heterogeneous GNNs (HGT, HMPNN) improve fraud detection but depend on labeled data. Self-supervised learning (LaundroGraph) overcomes label scarcity but only on homogeneous graphs. No prior work combines heterogeneous self-supervised pretraining (HGMAE) with downstream fraud detection. This thesis fills that gap.

@@ -3,11 +3,10 @@ Two-stage self-supervised training orchestrator.
 
 Stage 1: Pretrain encoder with self-supervised objective (no labels).
 Stage 2: Train downstream classifier using pretrained embeddings.
-  - Frozen probe (default): freeze encoder, train MLP on extracted embeddings
+  - Frozen probe (default): freeze encoder, train classifier on extracted embeddings
   - Fine-tune: unfreeze encoder and train end-to-end
 
-Wraps the pretrained encoder + classifier into a model compatible with
-Trainer's _compute_edge_logits_hetero.
+Supports both node classification (TXN_V1) and edge classification (V1/V2).
 """
 
 from copy import deepcopy
@@ -16,7 +15,40 @@ import torch
 import torch.nn as nn
 
 from src.training.trainer import Trainer, TrainConfig
-from src.utils.class_weights import compute_class_weights
+
+
+class PretrainedNodeClassifier(nn.Module):
+    """
+    Wraps a pretrained encoder + linear classifier for node classification.
+
+    Compatible with Trainer: forward(data) returns logits for target_node_type.
+    """
+
+    def __init__(self, encoder, hidden_dim, target_node_type="transaction",
+                 dropout=0.3, freeze=True):
+        super().__init__()
+        self.encoder = encoder
+        self.freeze = freeze
+        self.target_node_type = target_node_type
+
+        if freeze:
+            for p in self.encoder.parameters():
+                p.requires_grad = False
+
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, data):
+        if self.freeze:
+            with torch.no_grad():
+                x_dict = self.encoder(data)
+        else:
+            x_dict = self.encoder(data)
+        return self.classifier(x_dict[self.target_node_type]).squeeze(-1)
 
 
 class PretrainedEdgeClassifier(nn.Module):
@@ -60,6 +92,8 @@ class PretrainTrainer:
         ssl_model: model with pretrain_forward(data) and forward(data) methods
         data: HeteroData
         device: torch device
+        task: "node" or "edge"
+        target_node_type: node type to classify (node task only)
         hidden_dim: encoder hidden dimension
         pretrain_epochs: epochs for stage 1
         pretrain_lr: learning rate for stage 1
@@ -71,13 +105,16 @@ class PretrainTrainer:
         dropout: dropout for classifier
     """
 
-    def __init__(self, ssl_model, data, device, hidden_dim=64,
+    def __init__(self, ssl_model, data, device, task="node",
+                 target_node_type="transaction", hidden_dim=64,
                  pretrain_epochs=200, pretrain_lr=1e-3, pretrain_patience=20,
                  classify_epochs=200, classify_lr=1e-3, classify_patience=15,
                  freeze=True, dropout=0.3):
         self.ssl_model = ssl_model.to(device)
         self.data = data.to(device)
         self.device = device
+        self.task = task
+        self.target_node_type = target_node_type
         self.hidden_dim = hidden_dim
         self.pretrain_epochs = pretrain_epochs
         self.pretrain_lr = pretrain_lr
@@ -97,7 +134,7 @@ class PretrainTrainer:
 
         print("\n" + "=" * 60)
         mode = "frozen probe" if self.freeze else "fine-tune"
-        print(f"STAGE 2: Downstream classification ({mode})")
+        print(f"STAGE 2: Downstream classification ({mode}, task={self.task})")
         print("=" * 60)
         return self._classify()
 
@@ -116,7 +153,6 @@ class PretrainTrainer:
         best_state = None
         cnt_wait = 0
 
-        # Use val mask to compute validation pretrain loss
         for epoch in range(1, self.pretrain_epochs + 1):
             self.ssl_model.train()
             optimizer.zero_grad()
@@ -146,21 +182,34 @@ class PretrainTrainer:
         print(f"Pretraining complete. Best loss: {best_loss:.4f}")
 
     def _classify(self):
-        """Stage 2: train downstream edge classifier using Trainer."""
-        # Wrap encoder + classifier
-        wrapped = PretrainedEdgeClassifier(
-            self.ssl_model, self.hidden_dim,
-            dropout=self.dropout, freeze=self.freeze
-        )
-
-        train_config = TrainConfig(
-            task="edge",
-            graph_type="hetero",
-            target_node_type="internal_account",
-            epochs=self.classify_epochs,
-            lr=self.classify_lr,
-            patience=self.classify_patience,
-        )
+        """Stage 2: train downstream classifier using Trainer."""
+        if self.task == "node":
+            wrapped = PretrainedNodeClassifier(
+                self.ssl_model, self.hidden_dim,
+                target_node_type=self.target_node_type,
+                dropout=self.dropout, freeze=self.freeze
+            )
+            train_config = TrainConfig(
+                task="node",
+                graph_type="hetero",
+                target_node_type=self.target_node_type,
+                epochs=self.classify_epochs,
+                lr=self.classify_lr,
+                patience=self.classify_patience,
+            )
+        else:
+            wrapped = PretrainedEdgeClassifier(
+                self.ssl_model, self.hidden_dim,
+                dropout=self.dropout, freeze=self.freeze
+            )
+            train_config = TrainConfig(
+                task="edge",
+                graph_type="hetero",
+                target_node_type="internal_account",
+                epochs=self.classify_epochs,
+                lr=self.classify_lr,
+                patience=self.classify_patience,
+            )
 
         trainer = Trainer(wrapped, self.data, train_config, self.device)
         return trainer.run()
