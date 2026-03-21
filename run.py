@@ -91,6 +91,59 @@ def run_l2(prep, config, task="node", conv_type="sage", **kwargs):
     return trainer.run()
 
 
+def run_l4(prep, config, model_name="hgmae", **kwargs):
+    """L4: Self-supervised pretraining → downstream classifier."""
+    from src.graph_pipeline_bank import build_graph
+    from src.self_supervised.pretrain_trainer import PretrainTrainer
+
+    device = get_device()
+    result = build_graph(config, prep=prep)
+    data = result["data"]
+
+    hidden_dim = kwargs.get("hidden_dim", 64)
+
+    if model_name == "hgmae":
+        from src.self_supervised.hgmae.model import HGMAE
+        l4_cfg = config.get("l4", {}).get("hgmae", {})
+        ssl_model = HGMAE(
+            data,
+            hidden_dim=hidden_dim,
+            num_heads=kwargs.get("num_heads", 4),
+            num_layers=kwargs.get("num_layers", 2),
+            dropout=kwargs.get("dropout", 0.3),
+            feat_mask_rate=l4_cfg.get("feat_mask_rate", 0.5),
+            edge_mask_rate=l4_cfg.get("edge_mask_rate", 0.3),
+            edge_recon_weight=l4_cfg.get("edge_recon_weight", 1.0),
+        )
+    elif model_name == "laundrograph":
+        from src.self_supervised.laundrograph.model import LaundroGraph
+        ssl_model = LaundroGraph(
+            data,
+            hidden_dim=hidden_dim,
+            num_layers=kwargs.get("num_layers", 2),
+            dropout=kwargs.get("dropout", 0.3),
+        )
+    else:
+        raise ValueError(f"Unknown L4 model: {model_name}")
+
+    pretrain_epochs = kwargs.get("pretrain_epochs", 200)
+    freeze = kwargs.get("freeze", True)
+
+    trainer = PretrainTrainer(
+        ssl_model, data, device,
+        hidden_dim=hidden_dim,
+        pretrain_epochs=pretrain_epochs,
+        pretrain_lr=kwargs.get("lr", 1e-3),
+        pretrain_patience=kwargs.get("patience", 20),
+        classify_epochs=kwargs.get("epochs", 200),
+        classify_lr=kwargs.get("lr", 1e-3),
+        classify_patience=kwargs.get("patience", 15),
+        freeze=freeze,
+        dropout=kwargs.get("dropout", 0.3),
+    )
+    return trainer.run()
+
+
 def run_l3(prep, config, task="node", model_name="hgt", **kwargs):
     """L3: Heterogeneous GNN."""
     from src.training.trainer import Trainer, TrainConfig
@@ -157,6 +210,9 @@ def _results_dir(level, **kwargs):
     elif level == 3:
         model = kwargs.get("model", "hgt")
         return PROJECT_ROOT / "src" / "heterogeneous" / model / "results"
+    elif level == 4:
+        model = kwargs.get("model", "hgmae")
+        return PROJECT_ROOT / "src" / "self_supervised" / model / "results"
     return PROJECT_ROOT / "results"
 
 
@@ -232,10 +288,10 @@ def save_results(metrics, level, **kwargs):
 
 def main():
     parser = argparse.ArgumentParser(description="Run fraud detection experiments")
-    parser.add_argument("--level", type=int, choices=[0, 1, 2, 3], help="Experiment level")
+    parser.add_argument("--level", type=int, choices=[0, 1, 2, 3, 4], help="Experiment level")
     parser.add_argument("--all", action="store_true", help="Run all levels")
     parser.add_argument("--task", type=str, default="node", choices=["node", "edge"])
-    parser.add_argument("--model", type=str, default="hgt", choices=["hgt", "hmpnn"])
+    parser.add_argument("--model", type=str, default="hgt", choices=["hgt", "hmpnn", "hgmae", "laundrograph"])
     parser.add_argument("--conv", type=str, default="sage", choices=["gcn", "sage", "transe", "distmult"])
     parser.add_argument("--variant", type=str, default="v1", help="Config variant (v1, v2, v3, txn_v1)")
     parser.add_argument("--config", type=str, default=None, help="Config name override")
@@ -247,6 +303,11 @@ def main():
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--patience", type=int, default=15)
+    parser.add_argument("--pretrain-epochs", type=int, default=200)
+    parser.add_argument("--freeze", action="store_true", default=True,
+                        help="Freeze encoder in stage 2 (linear probe)")
+    parser.add_argument("--no-freeze", dest="freeze", action="store_false",
+                        help="Fine-tune encoder in stage 2")
 
     args = parser.parse_args()
 
@@ -264,6 +325,8 @@ def main():
         "epochs": args.epochs,
         "lr": args.lr,
         "patience": args.patience,
+        "pretrain_epochs": args.pretrain_epochs,
+        "freeze": args.freeze,
     }
 
     prep = prepare_data(config)
@@ -300,13 +363,15 @@ def main():
         results = run_l2(prep, config, task=args.task, conv_type=args.conv, **model_kwargs)
     elif args.level == 3:
         results = run_l3(prep, config, task=args.task, model_name=args.model, **model_kwargs)
+    elif args.level == 4:
+        results = run_l4(prep, config, model_name=args.model, **model_kwargs)
 
     # Save
     save_kwargs = {
         "task": args.task,
-        "model": args.model if args.level == 3 else None,
+        "model": args.model if args.level in (3, 4) else None,
         "conv": args.conv if args.level == 2 else None,
-        "variant": args.variant if args.level == 3 else None,
+        "variant": args.variant if args.level in (3, 4) else None,
     }
     if isinstance(results, list):
         for r in results:
