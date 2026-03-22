@@ -87,18 +87,12 @@ def run_xgboost(prep: PreparedData) -> dict:
     scale_pos = n_neg / n_pos if n_pos > 0 else 1.0
 
     model = XGBClassifier(
-        n_estimators=2000,
-        max_depth=8,
-        learning_rate=0.01,
-        min_child_weight=5,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        gamma=1,
-        reg_alpha=0.1,
-        reg_lambda=1.0,
+        n_estimators=300,
+        max_depth=6,
+        learning_rate=0.1,
         scale_pos_weight=scale_pos,
         eval_metric="aucpr",
-        early_stopping_rounds=50,
+        early_stopping_rounds=20,
         n_jobs=-1,
         tree_method="hist",
     )

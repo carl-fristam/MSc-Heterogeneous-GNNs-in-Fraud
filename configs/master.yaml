@@ -15,7 +15,7 @@
 data_path: datasets/TRANSACTIONS_almost_clean.parquet
 sample_ratio: 1.0   # 0.01 for dev
 
-truncate_after: "2024-12-31"
+truncate_after: "2026-12-31"
 
 split:
   method: temporal
