@@ -108,8 +108,18 @@ def run_graph_feature_baselines(prep: PreparedData) -> list[dict]:
     )
     model.fit(X[train_m], y[train_m], eval_set=[(X[val_m], y[val_m])], verbose=False)
 
+    # Find optimal threshold on validation set
+    y_val_prob = model.predict_proba(X[val_m])[:, 1]
+    best_t, best_f1 = 0.5, 0.0
+    for t in np.arange(0.05, 0.95, 0.01):
+        f1 = f1_score(y[val_m], (y_val_prob >= t).astype(int), zero_division=0)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_t = t
+    print(f"  Optimal threshold (val F1): {best_t:.2f} (F1={best_f1:.4f})")
+
     y_prob = model.predict_proba(X[test_m])[:, 1]
-    y_pred = (y_prob >= 0.5).astype(int)
+    y_pred = (y_prob >= best_t).astype(int)
 
     metrics = {
         "model": "XGBoost + Graph Features",
