@@ -31,29 +31,106 @@ cache:
 
 columns:
   sender:        ACCOUNTID
-  receiver:      COUNTERENTITYID
+  receiver:      COUNTERPARTYID
   timestamp:     EVENTTIME
   label:         CONFIRMEDRISK
   onus_flag:     TRANSACTIONONUS
-  sender_bank:   ACCOUNTAGENTID
-  receiver_bank: COUNTERAGENTID
-  channel:       CHANNEL
-  submethod:     PAYMENTSUBMETHOD
-  clearing:      PAYMENTCLEARING
   base_value:    BASEVALUE
-  currency:      CURRENCY
   intl_flag:     INTERNATIONALFLAG
-  dest_country:  DESTINATIONCOUNTRY
-  branch_tbe:    ACCOUNTBRANCH_TBE
+  org_trans_id:  ORGTRANSID
+
+  # Pre-OHE'd column groups (already encoded in dataset)
+  ohe_groups:
+    branch_tbe:
+      - ACCOUNTBRANCH_TBE_3055
+      - ACCOUNTBRANCH_TBE_3098
+      - ACCOUNTBRANCH_TBE_3161
+      - ACCOUNTBRANCH_TBE_32AG
+      - ACCOUNTBRANCH_TBE_32AN
+      - ACCOUNTBRANCH_TBE_32BH
+      - ACCOUNTBRANCH_TBE_3355
+      - ACCOUNTBRANCH_TBE_35AC
+      - ACCOUNTBRANCH_TBE_35AJ
+      - ACCOUNTBRANCH_TBE_35AL
+      - ACCOUNTBRANCH_TBE_36AK
+      - ACCOUNTBRANCH_TBE_36AQ
+      - ACCOUNTBRANCH_TBE_36AU
+      - ACCOUNTBRANCH_TBE_36AW
+      - ACCOUNTBRANCH_TBE_36CQ
+      - ACCOUNTBRANCH_TBE_36CR
+      - ACCOUNTBRANCH_TBE_36CS
+      - ACCOUNTBRANCH_TBE_36CT
+      - ACCOUNTBRANCH_TBE_36CU
+      - ACCOUNTBRANCH_TBE_41AA
+      - ACCOUNTBRANCH_TBE_rare
+    counter_agent:
+      - "COUNTERAGENT_TBE_           "
+      - "COUNTERAGENT_TBE_ABBYGB2L   "
+      - "COUNTERAGENT_TBE_DABADKKK   "
+      - "COUNTERAGENT_TBE_DABAFIHH   "
+      - "COUNTERAGENT_TBE_DABAGB2B   "
+      - "COUNTERAGENT_TBE_DABASESX   "
+      - "COUNTERAGENT_TBE_ESSESESS   "
+      - "COUNTERAGENT_TBE_HANDSESS   "
+      - "COUNTERAGENT_TBE_KLRNSESS   "
+      - "COUNTERAGENT_TBE_LUNADK22   "
+      - "COUNTERAGENT_TBE_MONZGB2L   "
+      - "COUNTERAGENT_TBE_NAIAGB21   "
+      - "COUNTERAGENT_TBE_NDEADKKK   "
+      - "COUNTERAGENT_TBE_NDEAFIHH   "
+      - "COUNTERAGENT_TBE_NDEASESS   "
+      - "COUNTERAGENT_TBE_OKOYFIHH   "
+      - "COUNTERAGENT_TBE_REVOGB21   "
+      - "COUNTERAGENT_TBE_SBANFIHH   "
+      - "COUNTERAGENT_TBE_SWEDSESS   "
+      - "COUNTERAGENT_TBE_ULSBGB2B   "
+      - COUNTERAGENT_TBE_rare
+    clearing:
+      - PAYMENTCLEARING_default
+      - PAYMENTCLEARING_express
+      - PAYMENTCLEARING_instant
+      - "PAYMENTCLEARING_other  "
+    submethod:
+      - PAYMENTSUBMETHOD_accountClosure
+      - PAYMENTSUBMETHOD_bankGiro
+      - PAYMENTSUBMETHOD_futurePayment
+      - PAYMENTSUBMETHOD_plusGiro
+      - PAYMENTSUBMETHOD_realTime
+    currency:
+      - CURRENCY_TBE_DKK
+      - CURRENCY_TBE_EUR
+      - CURRENCY_TBE_GBP
+      - CURRENCY_TBE_NOK
+      - CURRENCY_TBE_SEK
+      - CURRENCY_TBE_rare
+    channel:
+      - CHANNEL_atmPayment
+      - CHANNEL_branch
+      - CHANNEL_ebanking
+      - CHANNEL_mobileBank
+      - CHANNEL_openBanking
+      - CHANNEL_swish
+      - CHANNEL_webPayments
+    sender_bank:
+      - ACCOUNTAGENTID_DABADKKK
+      - ACCOUNTAGENTID_DABAFIHH
+      - ACCOUNTAGENTID_DABAGB2B
+      - ACCOUNTAGENTID_DABANO22
+      - ACCOUNTAGENTID_DABASESX
+    counter_id_format:
+      - COUNTERIDFORMAT_BBAN
+      - COUNTERIDFORMAT_IBAN
+    destination:
+      - DESTINATION_TBE_DK
+      - DESTINATION_TBE_FI
+      - DESTINATION_TBE_GB
+      - DESTINATION_TBE_NO
+      - DESTINATION_TBE_SE
+      - DESTINATION_TBE_rare
+
+  customer_id:   CUSTOMERID
 
   drop:
-    - COUNTERPARTYID
-    - ACCOUNTENTITYID
-    - CUSTOMERENTITYID
-    - CUSTOMERID
-    - ACCOUNTIDFORMAT
-    - COUNTERIDFORMAT
-    - ACCOUNTBRANCHID
     - COUNTERBRANCHID
 
 
@@ -61,11 +138,16 @@ columns:
 
 edge_features:
   - log_base_value
-  - channel_ohe
-  - submethod_ohe
-  - clearing_express
+  - channel_ohe          # pre-encoded: CHANNEL_* columns
+  - submethod_ohe        # pre-encoded: PAYMENTSUBMETHOD_* columns
+  - clearing_ohe         # pre-encoded: PAYMENTCLEARING_* columns
+  - currency_ohe         # pre-encoded: CURRENCY_TBE_* columns
+  - counter_agent_ohe    # pre-encoded: COUNTERAGENT_TBE_* columns
+  - sender_bank_ohe      # pre-encoded: ACCOUNTAGENTID_* columns
+  - counter_id_format    # pre-encoded: COUNTERIDFORMAT_* columns
+  - destination_ohe      # pre-encoded: DESTINATION_TBE_* columns
+  - branch_tbe_ohe       # pre-encoded: ACCOUNTBRANCH_TBE_* columns
   - international_flag
-  - branch_tbe_ohe
   - time_encoding
 
 
