@@ -57,7 +57,7 @@ def run_logistic_regression(prep: PreparedData) -> dict:
 
     model = LogisticRegression(
         class_weight="balanced",
-        max_iter=1000,
+        max_iter=5000,
         solver="saga",
         n_jobs=-1,
     )
@@ -87,19 +87,35 @@ def run_xgboost(prep: PreparedData) -> dict:
     scale_pos = n_neg / n_pos if n_pos > 0 else 1.0
 
     model = XGBClassifier(
-        n_estimators=300,
-        max_depth=6,
-        learning_rate=0.1,
+        n_estimators=2000,
+        max_depth=8,
+        learning_rate=0.01,
+        min_child_weight=5,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        gamma=1,
+        reg_alpha=0.1,
+        reg_lambda=1.0,
         scale_pos_weight=scale_pos,
         eval_metric="aucpr",
-        early_stopping_rounds=20,
+        early_stopping_rounds=50,
         n_jobs=-1,
         tree_method="hist",
     )
     model.fit(X[train_m], y[train_m], eval_set=[(X[val_m], y[val_m])], verbose=False)
 
+    # Find optimal threshold on validation set
+    y_val_prob = model.predict_proba(X[val_m])[:, 1]
+    best_t, best_f1 = 0.5, 0.0
+    for t in np.arange(0.05, 0.95, 0.01):
+        f1 = f1_score(y[val_m], (y_val_prob >= t).astype(int), zero_division=0)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_t = t
+    print(f"  Optimal threshold (val F1): {best_t:.2f} (F1={best_f1:.4f})")
+
     y_prob = model.predict_proba(X[test_m])[:, 1]
-    y_pred = (y_prob >= 0.5).astype(int)
+    y_pred = (y_prob >= best_t).astype(int)
 
     return _evaluate(y[test_m], y_prob, y_pred, "XGBoost")
 
@@ -107,6 +123,6 @@ def run_xgboost(prep: PreparedData) -> dict:
 def run_tabular_baselines(prep: PreparedData) -> list[dict]:
     """Run all L0 baselines and return results."""
     return [
-        run_logistic_regression(prep),
+        # run_logistic_regression(prep),
         run_xgboost(prep),
     ]
