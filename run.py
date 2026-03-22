@@ -327,11 +327,20 @@ def main():
     else:
         config = load_variant(args.variant)
 
+    datasets_dir = PROJECT_ROOT / "datasets"
     if args.data_path is not None:
         config["data_path"] = args.data_path
     elif not Path(config["data_path"]).exists():
-        print(f"Dataset not found at: {config['data_path']}")
-        config["data_path"] = input("Enter path to dataset: ").strip()
+        print(f"\nDataset not found at: {config['data_path']}")
+        print(f"Available files in datasets/:")
+        files = sorted(datasets_dir.glob("*.parquet"))
+        for i, f in enumerate(files, 1):
+            print(f"  {i}. {f.name}")
+        choice = input("\nEnter filename or number: ").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(files):
+            config["data_path"] = str(files[int(choice) - 1])
+        else:
+            config["data_path"] = str(datasets_dir / choice)
 
     if args.sample is not None:
         config["sample_ratio"] = args.sample
