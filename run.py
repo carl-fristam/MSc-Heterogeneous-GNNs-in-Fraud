@@ -27,6 +27,7 @@ Usage:
 import argparse
 import json
 from datetime import datetime
+from pathlib import Path
 
 from src.utils.config import load_config, load_variant, PROJECT_ROOT
 from src.utils.device import get_device
@@ -305,6 +306,7 @@ def main():
     parser.add_argument("--variant", type=str, default="v1", help="Config variant (v1, v2, v3, txn_v1)")
     parser.add_argument("--config", type=str, default=None, help="Config name override")
     parser.add_argument("--sample", type=float, default=None, help="Override sample_ratio")
+    parser.add_argument("--data-path", type=str, default=None, help="Override dataset path")
 
     # Model hyperparameters
     parser.add_argument("--hidden-dim", type=int, default=64)
@@ -324,6 +326,12 @@ def main():
         config = load_config(args.config)
     else:
         config = load_variant(args.variant)
+
+    if args.data_path is not None:
+        config["data_path"] = args.data_path
+    elif not Path(config["data_path"]).exists():
+        print(f"Dataset not found at: {config['data_path']}")
+        config["data_path"] = input("Enter path to dataset: ").strip()
 
     if args.sample is not None:
         config["sample_ratio"] = args.sample
