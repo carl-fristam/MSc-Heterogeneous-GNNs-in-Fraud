@@ -330,13 +330,15 @@ def main():
     datasets_dir = PROJECT_ROOT / "datasets"
     if args.data_path is not None:
         config["data_path"] = args.data_path
-    elif not Path(config["data_path"]).exists():
-        print(f"\nDataset not found at: {config['data_path']}")
-        print(f"Available files in datasets/:")
+    else:
+        print(f"\nAvailable datasets:")
         files = sorted(datasets_dir.glob("*.parquet"))
+        if not files:
+            print("  No .parquet files found in datasets/")
+            raise SystemExit(1)
         for i, f in enumerate(files, 1):
             print(f"  {i}. {f.name}")
-        choice = input("\nEnter filename or number: ").strip()
+        choice = input("\nSelect dataset (number or filename): ").strip()
         if choice.isdigit() and 1 <= int(choice) <= len(files):
             config["data_path"] = str(files[int(choice) - 1])
         else:
