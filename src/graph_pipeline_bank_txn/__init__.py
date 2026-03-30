@@ -5,10 +5,10 @@ Mirrors the xFraud architecture: transactions and accounts are both node types.
 Labels live on Transaction nodes (node classification, not edge classification).
 
 Usage:
-    from src.utils.config import load_config
+    from src.utils.config import load_variant
     from src.graph_pipeline_bank_txn import build_graph
 
-    config = load_config("graph_bank_txn_v1")
+    config = load_variant("txn_v1")   # loads variant from configs/master.yaml
     result = build_graph(config)
 
     data      = result["data"]        # PyG HeteroData

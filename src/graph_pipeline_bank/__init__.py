@@ -2,10 +2,10 @@
 Bank payment dataset graph pipeline.
 
 Usage:
-    from src.utils.config import load_config
+    from src.utils.config import load_variant
     from src.graph_pipeline_bank import build_graph
 
-    config = load_config("graph_bank_v1")   # loads configs/graph_bank_v1.yaml
+    config = load_variant("v1")   # loads variant from configs/master.yaml
     result = build_graph(config)
 
     data      = result["data"]        # PyG HeteroData

@@ -48,6 +48,17 @@ mlruns/
 # Allow markdown result logs in results/
 !results/**/*.md
 
+# --- LATEX BUILD ARTIFACTS ---
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.toc
+paper/build/
+
 # --- TEMPORARY FILES ---
 *.swp
 *.swo
