@@ -199,6 +199,9 @@ variants:
         filter: "TRANSACTIONONUS == False"
 
   # ── V2: Payment rail typed edges ─────────────────────────────────────────
+  # Splits external transfers by payment submethod using OHE columns.
+  # (No raw PAYMENTSUBMETHOD column in the dataset — only OHE'd variants.)
+  # Salary is not present as an OHE column so is excluded.
   v2:
     nodes: [internal_account, external_account]
     edges:
@@ -210,61 +213,19 @@ variants:
       - name: ext_realtime
         src:  internal_account
         dst:  external_account
-        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD == 'realTime'"
+        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD_realTime == 1"
 
       - name: ext_giro
         src:  internal_account
         dst:  external_account
-        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD in ['bankGiro', 'plusGiro']"
+        filter: "TRANSACTIONONUS == False and (PAYMENTSUBMETHOD_bankGiro == 1 or PAYMENTSUBMETHOD_plusGiro == 1)"
 
       - name: ext_future
         src:  internal_account
         dst:  external_account
-        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD == 'futurePayment'"
-
-      - name: ext_salary
-        src:  internal_account
-        dst:  external_account
-        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD == 'salary'"
+        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD_futurePayment == 1"
 
       - name: ext_other
         src:  internal_account
         dst:  external_account
-        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD not in ['realTime', 'bankGiro', 'plusGiro', 'futurePayment', 'salary']"
-
-  # ── TXN_V1: Transactions as nodes (node classification) ───────────────────
-  txn_v1:
-    nodes: [transaction, internal_account, external_account]
-    transaction_features:
-      - log_base_value
-      - channel_ohe
-      - submethod_ohe
-      - clearing_express
-      - international_flag
-      - branch_tbe_ohe
-      - time_encoding
-    edges:
-      - name: sends
-        src: internal_account
-        dst: transaction
-
-      - name: received_by_internal
-        src: transaction
-        dst: internal_account
-        filter: "TRANSACTIONONUS == True"
-
-      - name: received_by_external
-        src: transaction
-        dst: external_account
-        filter: "TRANSACTIONONUS == False"
-
-
-# ==============================================================================
-# L4: Self-supervised pretraining settings
-# ==============================================================================
-
-l4:
-  laundrograph:
-    num_neg_samples: 5
-    pretrain_epochs: 200
-    pretrain_patience: 20
+        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD_realTime != 1 and PAYMENTSUBMETHOD_bankGiro != 1 and PAYMENTSUBMETHOD_plusGiro != 1 and PAYMENTSUBMETHOD_futurePayment != 1"
