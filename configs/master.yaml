@@ -138,9 +138,6 @@ columns:
 
   customer_id:   CUSTOMERID
 
-  drop:
-    - COUNTERBRANCHID
-
 
 # ── Transaction / edge features (shared across ALL variants) ─────────────────
 
