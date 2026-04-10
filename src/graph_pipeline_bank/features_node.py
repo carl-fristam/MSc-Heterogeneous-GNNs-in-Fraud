@@ -102,7 +102,32 @@ def build_node_features(
 
     feat = np.concatenate(parts, axis=1).astype(np.float32)
     print(f"  {node_type}: {feat.shape[1]} total feature dims (before normalisation)")
-    return zscore_cols(torch.tensor(feat, dtype=torch.float32))
+
+    feat_tensor = torch.tensor(feat, dtype=torch.float32)
+
+    # Compute normalisation stats from training-present nodes only.
+    # Nodes unseen in training have all-zero features; including them would
+    # bias the mean toward zero and underestimate std.
+    if node_type == "internal_account":
+        train_ids = set(df.loc[train_mask, "_sender"].astype(str).unique())
+    elif node_type == "external_account":
+        onus_col = col_cfg.get("onus_flag")
+        train_df = df[train_mask]
+        if onus_col and onus_col in train_df.columns:
+            train_df = train_df[~train_df[onus_col]]
+        train_ids = set(train_df["_receiver"].astype(str).unique())
+    else:
+        train_ids = set(node_to_id.keys())
+
+    train_indices = [node_to_id[nid] for nid in train_ids if nid in node_to_id]
+    if train_indices:
+        train_feat = feat_tensor[train_indices]
+        mean = train_feat.mean(dim=0)
+        std  = train_feat.std(dim=0)
+        std[std == 0] = 1.0
+        return (feat_tensor - mean) / std
+    else:
+        return zscore_cols(feat_tensor)
 
 
 # ── Shared helper ─────────────────────────────────────────────────────────────
@@ -169,13 +194,17 @@ def _device_diversity(df, col_cfg, node_to_id, train_mask):
 
 @register_internal_feature("channel_diversity", dim=1)
 def _channel_diversity(df, col_cfg, node_to_id, train_mask):
-    """Number of unique channels used (as sender)."""
-    ch_col = col_cfg.get("channel")
-    if not ch_col or ch_col not in df.columns:
+    """Number of unique channel OHE columns active per sender (proxy for channel variety)."""
+    ch_cols = col_cfg.get("ohe_groups", {}).get("channel", [])
+    ch_cols = [c.strip() for c in ch_cols if c.strip() in df.columns]
+    if not ch_cols:
         return None
-    n   = len(node_to_id)
-    out = np.zeros((n, 1), dtype=np.float32)
-    _place(df[train_mask].groupby("_sender")[ch_col].nunique(), node_to_id, out, 0)
+    n        = len(node_to_id)
+    out      = np.zeros((n, 1), dtype=np.float32)
+    train_df = df[train_mask]
+    # Count how many distinct channel columns are ever 1 for each sender
+    diversity = train_df.groupby("_sender")[ch_cols].max().sum(axis=1)
+    _place(diversity, node_to_id, out, 0)
     return out
 
 
@@ -292,10 +321,10 @@ def _ext_sender_diversity(df, col_cfg, node_to_id, train_mask):
 @register_external_feature("sender_bank_diversity", dim=1)
 def _ext_sender_bank_diversity(df, col_cfg, node_to_id, train_mask):
     """
-    Number of unique sender banks (COUNTERAGENTID) sending to this account.
-    High diversity = receiving from many institutions (suspicious pattern).
+    Number of unique Danske Bank entities (ACCOUNTAGENTID) that sent to this external account.
+    High diversity = money flowing in from multiple bank branches/subsidiaries (suspicious pattern).
     """
-    bank_col = col_cfg.get("receiver_bank")  # COUNTERAGENTID
+    bank_col = col_cfg.get("sender_bank")  # ACCOUNTAGENTID — the Danske Bank entity that sent the money
     onus_col = col_cfg.get("onus_flag")
     if not bank_col or bank_col not in df.columns:
         return None

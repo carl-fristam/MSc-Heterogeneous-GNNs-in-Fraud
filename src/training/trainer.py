@@ -1,11 +1,9 @@
 """
-Unified training loop for all GNN models.
+Unified training loop for all GNN models (L1 homo and L2 hetero).
 
 Supports:
-  - Homogeneous node classification (GCN, GraphSAGE on Data)
-  - Homogeneous edge classification (GCN, GraphSAGE on Data)
-  - Heterogeneous node classification (HGT, HMPNN on HeteroData)
-  - Heterogeneous edge classification (HGT, HMPNN on HeteroData)
+  - Homogeneous edge classification (GCN, GraphSAGE, GAT on projected Data)
+  - Heterogeneous edge classification (HGT, HMPNN, HeteroGAT on HeteroData)
 
 Usage:
     from src.training.trainer import Trainer, TrainConfig
@@ -163,9 +161,9 @@ class Trainer:
             if scheduler:
                 scheduler.step()
 
-            # Validation
+            # Validation (recompute logits under eval mode — dropout must be off)
             if epoch % 5 == 0 or epoch == 1:
-                val_metrics = self._evaluate(criterion, logits)
+                val_metrics = self._evaluate(criterion)
 
                 print(
                     f"Epoch {epoch:3d} | "
@@ -181,8 +179,9 @@ class Trainer:
                     cnt_wait = 0
                 else:
                     cnt_wait += 1
+                    # patience is in validation-check units (checks run every 5 epochs)
                     if cnt_wait >= cfg.patience:
-                        print(f"Early stopping at epoch {epoch} (patience={cfg.patience})")
+                        print(f"Early stopping at epoch {epoch} (patience={cfg.patience} checks = {cfg.patience * 5} epochs)")
                         break
 
         # Test

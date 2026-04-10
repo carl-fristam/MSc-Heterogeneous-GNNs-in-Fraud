@@ -78,10 +78,17 @@ def build_edge_features(
 
 def fit_vocabs(df: pd.DataFrame, col_cfg: dict, train_mask: pd.Series) -> dict[str, list[str]]:
     """
-    Legacy vocab fitting. With pre-OHE'd data this is a no-op but kept
-    for API compatibility with the graph builder.
+    Fit normalisation statistics on training data only.
+    Stats are stored in vocabs so downstream extractors apply train-fitted
+    scaling to val/test rows without leakage.
     """
-    return {}
+    vocabs: dict = {}
+    bval_col = col_cfg.get("base_value")
+    if bval_col and bval_col in df.columns:
+        train_vals = np.log1p(df.loc[train_mask, bval_col].fillna(0).values.astype(np.float32))
+        vocabs["_log_base_value_mean"] = float(train_vals.mean())
+        vocabs["_log_base_value_std"] = float(train_vals.std()) if train_vals.std() > 0 else 1.0
+    return vocabs
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -90,12 +97,14 @@ def _grab_ohe_group(df, col_cfg, group_name):
     """
     Pull a pre-OHE'd column group from the DataFrame.
     Returns np.ndarray of shape (len(df), num_cols) or None if group not configured.
+    Column names are stripped of surrounding whitespace before matching.
     """
     ohe_groups = col_cfg.get("ohe_groups", {})
     cols = ohe_groups.get(group_name)
     if not cols:
         return None
-    # Only use columns that exist in the DataFrame
+    # Strip whitespace — YAML may preserve padding from fixed-width source data
+    cols = [c.strip() for c in cols]
     present = [c for c in cols if c in df.columns]
     if not present:
         return None
@@ -106,12 +115,14 @@ def _grab_ohe_group(df, col_cfg, group_name):
 
 @register_edge_feature("log_base_value", dim=1)
 def _log_base_value(df, col_cfg, vocabs):
-    """log1p(BASEVALUE), z-score normalised."""
+    """log1p(BASEVALUE), z-score normalised using training-data statistics."""
     bval_col = col_cfg.get("base_value")
     if not bval_col or bval_col not in df.columns:
         return None
     vals = np.log1p(df[bval_col].fillna(0).values.astype(np.float32))
-    return zscore(vals).reshape(-1, 1)
+    mean = vocabs.get("_log_base_value_mean", float(vals.mean()))
+    std  = vocabs.get("_log_base_value_std",  float(vals.std()) if vals.std() > 0 else 1.0)
+    return ((vals - mean) / std).reshape(-1, 1)
 
 
 @register_edge_feature("channel_ohe", dim=None)
