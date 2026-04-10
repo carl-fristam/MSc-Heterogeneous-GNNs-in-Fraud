@@ -143,8 +143,16 @@ def _cache_path(config: dict) -> str:
     cache_dir = config.get("cache", {}).get("dir", "data/processed/bank")
     variant   = config.get("variant", "unknown")
     sr        = config.get("sample_ratio", 1.0)
-    rel_sig = json.dumps(config.get("edges", {}).get("relations", []), sort_keys=True)
-    h = hashlib.md5(rel_sig.encode()).hexdigest()[:6]
+    # Hash covers everything that affects the graph: relations, features,
+    # truncation date, and split dates — so any config change busts the cache.
+    sig = json.dumps({
+        "relations":     config.get("edges", {}).get("relations", []),
+        "edge_features": config.get("edges", {}).get("features", []),
+        "node_features": {k: v.get("features") for k, v in config.get("nodes", {}).items()},
+        "truncate_after": config.get("truncate_after"),
+        "split":          config.get("split"),
+    }, sort_keys=True)
+    h = hashlib.md5(sig.encode()).hexdigest()[:8]
     return str(PROJECT_ROOT / cache_dir / f"graph_bank_{variant}_sr{sr:.2f}_{h}.pkl")
 
 

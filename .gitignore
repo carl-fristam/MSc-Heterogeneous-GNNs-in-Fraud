@@ -59,6 +59,9 @@ mlruns/
 *.toc
 paper/build/
 
+# --- WORKING DOCS (may contain sensitive content) ---
+doc_workspace.md
+
 # --- TEMPORARY FILES ---
 *.swp
 *.swo

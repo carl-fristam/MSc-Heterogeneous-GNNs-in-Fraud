@@ -4,9 +4,16 @@
 # Shared settings (data, columns, split, features) are defined once at the top.
 # Each variant only specifies what differs: graph topology (nodes + edges).
 #
+# Experiment ladder:
+#   L0  Tabular XGBoost — no graph
+#   L1  Homogeneous GNN — graph projected to single node/edge type
+#   L2  Heterogeneous GNN — full typed graph
+#
 # Usage:
-#   python run.py --level 0                          (uses shared settings only)
-#   python run.py --level 3 --task edge --variant v1 (merges v1 into shared)
+#   python run.py --level 0                              # tabular baseline
+#   python run.py --level 1 --model sage --variant v1   # homo GNN
+#   python run.py --level 2 --model hgt  --variant v1   # hetero GNN
+#   python run.py --level 2 --model hgt  --variant v2   # finer edge typing
 # ==============================================================================
 
 
@@ -15,7 +22,7 @@
 data_path: datasets/TRANSACTIONS_almost_clean.parquet
 sample_ratio: 1.0   # 0.01 for dev
 
-truncate_after: "2026-12-31"
+truncate_after: "2024-12-31"  # fraud labels only cover up to this date
 
 split:
   method: temporal
@@ -38,6 +45,7 @@ columns:
   base_value:    BASEVALUE
   intl_flag:     INTERNATIONALFLAG
   org_trans_id:  ORGTRANSID
+  sender_bank: ACCOUNTAGENTID  # sender's bank BIC (Danske Bank entity); used for sender_bank_diversity on external nodes
 
   # Pre-OHE'd column groups (already encoded in dataset)
   ohe_groups:
@@ -259,13 +267,6 @@ variants:
 # ==============================================================================
 
 l4:
-  hgmae:
-    feat_mask_rate: 0.5
-    edge_mask_rate: 0.3
-    edge_recon_weight: 1.0
-    pretrain_epochs: 200
-    pretrain_patience: 20
-
   laundrograph:
     num_neg_samples: 5
     pretrain_epochs: 200
