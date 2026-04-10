@@ -1,184 +1,185 @@
 """
 HMPNN — Heterogeneous Message Passing Neural Network.
-
 Based on Johannessen & Jullum (2023).
-Uses NNConv to incorporate edge features into message passing.
-Supports both node and edge classification.
-"""
 
-from src.utils.compat import apply_pyg_compat_patch
-apply_pyg_compat_patch()
+Architecture
+------------
+Each HMPNNLayer performs one full message-passing step across the full
+heterogeneous graph: for every node type, it gathers edge-feature-weighted
+messages from all incoming edge types and projects them to a common hidden dim.
+
+NNConv (Gilmer et al., 2017) maps per-edge features to a weight matrix that
+modulates the neighbour message, allowing transaction-level features (amount,
+time delta, …) to influence propagation rather than treating all edges equally.
+
+Forward contract (mirrors HGT)
+-------------------------------
+- node task : returns logits tensor of shape (N_target,)
+- edge task  : returns x_dict; trainer scores edges via self.classifier
+"""
 
 import torch
 import torch.nn as nn
-from torch_geometric.nn import HeteroConv, NNConv
+import torch.nn.functional as F
+from torch_geometric.nn import NNConv
 
 
 class HMPNNLayer(nn.Module):
     """
-    Single HMPNN layer for one target node type.
+    One message-passing step that updates every node type.
 
-    For each edge type ending at target_node_type:
-    - Apply NNConv (message function uses edge features)
-    - Concatenate all messages
-    - Apply linear transformation
+    For each incoming edge type (with edge_attr):
+      1. NNConv uses edge features to weight the source-node message.
+      2. Messages from all relations arriving at a node type are concatenated.
+      3. A linear projection maps the concatenation to dim_out.
+
+    Node types with no incoming edge-attributed edges receive a zero tensor.
     """
 
-    def __init__(self, data, target_node_type, dim_in=None, dim_message=16, dim_out=16):
+    def __init__(self, data, dim_in: dict, dim_out: int, dim_message: int):
+        """
+        Args:
+            data:        HeteroData (read-only, used only here to infer shapes).
+            dim_in:      {node_type: feature dim} for the inputs to this layer.
+            dim_out:     output feature dim for every node type.
+            dim_message: per-relation message size before the final projection.
+        """
         super().__init__()
-
-        self.target_node_type = target_node_type
-
-        if dim_in is None:
-            self.dim_in = {nt: data[nt].x.shape[1] for nt in data.node_types}
-        else:
-            self.dim_in = dim_in
-
-        self.dim_message = dim_message
         self.dim_out = dim_out
+        self.node_types = list(data.node_types)
 
-        self.convs = nn.ModuleList()
-        self.edge_types_to_target = []
+        # One NNConv per edge type that carries edge attributes.
+        # Key format: "src_type__rel__dst_type"
+        self.convs = nn.ModuleDict()
+        # incoming[dst_type] = [(src_type, rel, dst_type, conv_key), ...]
+        self.incoming: dict = {nt: [] for nt in self.node_types}
 
-        for edge_type in data.edge_types:
-            src_type, rel_type, dst_type = edge_type
-
-            if dst_type != target_node_type:
+        for src_type, rel, dst_type in data.edge_types:
+            et = (src_type, rel, dst_type)
+            if not (hasattr(data[et], "edge_attr") and data[et].edge_attr is not None):
                 continue
 
-            if not hasattr(data[edge_type], "edge_attr") or data[edge_type].edge_attr is None:
-                continue
+            key = f"{src_type}__{rel}__{dst_type}"
+            num_edge_feats = data[et].edge_attr.shape[1]
+            dim_src = dim_in[src_type]
+            dim_dst = dim_in[dst_type]
 
-            self.edge_types_to_target.append(edge_type)
-
-            num_edge_features = data[edge_type].edge_attr.shape[1]
-
+            # Maps each edge's features to the (dim_src × dim_message) weight matrix
+            # used by NNConv to scale the source-node embedding.
             message_nn = nn.Sequential(
-                nn.Linear(num_edge_features, 32),
+                nn.Linear(num_edge_feats, 32),
                 nn.ReLU(),
-                nn.Linear(32, self.dim_in[src_type] * dim_message)
+                nn.Linear(32, dim_src * dim_message),
             )
-
-            conv = NNConv(
-                in_channels=(self.dim_in[src_type], self.dim_in[dst_type]),
+            self.convs[key] = NNConv(
+                in_channels=(dim_src, dim_dst),
                 out_channels=dim_message,
                 nn=message_nn,
-                aggr='mean'
+                aggr="mean",
             )
+            self.incoming[dst_type].append((src_type, rel, dst_type, key))
 
-            hetero_conv = HeteroConv({edge_type: conv}, aggr='sum')
-            self.convs.append(hetero_conv)
+        # Per-node-type projection: concat of all incoming messages → dim_out
+        self.projs = nn.ModuleDict()
+        for nt in self.node_types:
+            n_rels = max(len(self.incoming[nt]), 1)
+            self.projs[nt] = nn.Linear(n_rels * dim_message, dim_out)
 
-        n_incoming = max(len(self.convs), 1)
-        self.linear = nn.Linear(n_incoming * dim_message, dim_out)
+        self._dim_message = dim_message
 
     def forward(self, x_dict, edge_index_dict, edge_attr_dict):
-        messages = []
+        out = {}
+        for nt in self.node_types:
+            rels = self.incoming[nt]
+            if not rels:
+                # No incoming attributed edges — propagate zeros
+                n = x_dict[nt].shape[0]
+                out[nt] = x_dict[nt].new_zeros(n, self.dim_out)
+                continue
 
-        for conv in self.convs:
-            out = conv(x_dict, edge_index_dict, edge_attr_dict)
-            msg = torch.sigmoid(out[self.target_node_type])
-            messages.append(msg)
+            msgs = []
+            for src_type, rel, dst_type, key in rels:
+                et = (src_type, rel, dst_type)
+                msg = self.convs[key](
+                    (x_dict[src_type], x_dict[dst_type]),
+                    edge_index_dict[et],
+                    edge_attr_dict[et],
+                )
+                msgs.append(F.relu(msg))
 
-        if not messages:
-            n = x_dict[self.target_node_type].shape[0]
-            device = x_dict[self.target_node_type].device
-            return torch.zeros(n, self.dim_out, device=device)
+            out[nt] = F.relu(self.projs[nt](torch.cat(msgs, dim=1)))
 
-        concat = torch.cat(messages, dim=1)
-        return torch.sigmoid(self.linear(concat))
+        return out
 
 
 class HMPNN(nn.Module):
     """
-    Full HMPNN model.
+    Full HMPNN: num_layers HMPNNLayer instances + task head.
 
     Args:
-        data: HeteroData object
-        target_node_type: node type to produce embeddings for
-        num_layers: number of HMPNN layers (1-3)
-        hidden_dim: hidden dimension
-        message_dim: message dimension in HMPNN layers
-        task: "node" or "edge"
+        data:             HeteroData object.
+        target_node_type: node type to classify (node task) or produce
+                          embeddings for (edge task).
+        num_layers:       number of message-passing layers.
+        hidden_dim:       node embedding dimension throughout.
+        message_dim:      per-relation message size inside each layer.
+        dropout:          dropout applied after each layer.
+        task:             "node" or "edge".
     """
 
-    def __init__(self, data, target_node_type="transaction", num_layers=2,
-                 hidden_dim=16, message_dim=8, task="node"):
+    def __init__(
+        self,
+        data,
+        target_node_type: str = "transaction",
+        num_layers: int = 2,
+        hidden_dim: int = 16,
+        message_dim: int = 8,
+        dropout: float = 0.0,
+        task: str = "node",
+    ):
         super().__init__()
-
         self.target_node_type = target_node_type
-        self.num_layers = num_layers
-        self.node_types = data.node_types
+        self.node_types = list(data.node_types)
         self.task = task
 
         dim_in = {nt: data[nt].x.shape[1] for nt in data.node_types}
 
-        if num_layers == 1:
-            out_dim = 1 if task == "node" else hidden_dim
-            self.layers = nn.ModuleList([
-                HMPNNLayer(data, target_node_type, dim_in=dim_in,
-                          dim_message=message_dim, dim_out=out_dim)
-            ])
-        else:
-            self.layers = nn.ModuleList()
-
-            # First layer: for ALL node types
-            self.layer1_modules = nn.ModuleDict()
-            for nt in data.node_types:
-                self.layer1_modules[nt] = HMPNNLayer(
-                    data, nt, dim_in=dim_in,
-                    dim_message=message_dim, dim_out=hidden_dim
-                )
-
-            dim_in_next = {nt: hidden_dim for nt in data.node_types}
-
-            # Middle layers (if num_layers > 2)
-            if num_layers >= 3:
-                self.layer2_modules = nn.ModuleDict()
-                for nt in data.node_types:
-                    self.layer2_modules[nt] = HMPNNLayer(
-                        data, nt, dim_in=dim_in_next,
-                        dim_message=message_dim, dim_out=hidden_dim
-                    )
-
-            # Final layer
-            final_out = 1 if task == "node" else hidden_dim
-            self.final_layer = HMPNNLayer(
-                data, target_node_type, dim_in=dim_in_next,
-                dim_message=message_dim * 2, dim_out=final_out
+        self.mp_layers = nn.ModuleList()
+        for _ in range(num_layers):
+            self.mp_layers.append(
+                HMPNNLayer(data, dim_in=dim_in, dim_out=hidden_dim, dim_message=message_dim)
             )
+            dim_in = {nt: hidden_dim for nt in data.node_types}
 
-        if task == "edge":
-            self.edge_classifier = nn.Sequential(
+        self.dropout = nn.Dropout(dropout)
+
+        if task == "node":
+            self.classifier = nn.Linear(hidden_dim, 1)
+        else:
+            # Trainer scores edges via self.classifier using concat(src_emb, dst_emb)
+            self.classifier = nn.Sequential(
                 nn.Linear(hidden_dim * 2, hidden_dim),
                 nn.ReLU(),
                 nn.Linear(hidden_dim, 1),
             )
 
-    def forward(self, x_dict, edge_index_dict, edge_attr_dict):
-        if self.num_layers == 1:
-            out = self.layers[0](x_dict, edge_index_dict, edge_attr_dict)
-            if self.task == "node":
-                return out
-            else:
-                return {self.target_node_type: out}
+    def _edge_attr_dict(self, data):
+        return {
+            et: data[et].edge_attr
+            for et in data.edge_types
+            if hasattr(data[et], "edge_attr") and data[et].edge_attr is not None
+        }
 
-        # Layer 1: update all node types
-        x_dict_new = {}
-        for nt in self.node_types:
-            x_dict_new[nt] = self.layer1_modules[nt](x_dict, edge_index_dict, edge_attr_dict)
+    def forward(self, data):
+        x_dict = {nt: data[nt].x for nt in self.node_types}
+        edge_index_dict = data.edge_index_dict
+        edge_attr_dict = self._edge_attr_dict(data)
 
-        # Layer 2 (if exists)
-        if self.num_layers >= 3:
-            x_dict_tmp = {}
-            for nt in self.node_types:
-                x_dict_tmp[nt] = self.layer2_modules[nt](x_dict_new, edge_index_dict, edge_attr_dict)
-            x_dict_new = x_dict_tmp
-
-        out = self.final_layer(x_dict_new, edge_index_dict, edge_attr_dict)
+        for layer in self.mp_layers:
+            x_dict = layer(x_dict, edge_index_dict, edge_attr_dict)
+            x_dict = {nt: self.dropout(x) for nt, x in x_dict.items()}
 
         if self.task == "node":
-            return out
+            return self.classifier(x_dict[self.target_node_type]).squeeze(-1)
         else:
-            x_dict_new[self.target_node_type] = out
-            return x_dict_new
+            return x_dict  # Trainer scores edges via self.classifier
