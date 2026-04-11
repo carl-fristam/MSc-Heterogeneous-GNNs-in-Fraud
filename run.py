@@ -119,6 +119,7 @@ def run_l2(prep, config, model_name="hgt", **kwargs):
             message_dim=kwargs.get("message_dim", 32),
             dropout=kwargs.get("dropout", 0.3),
             task="edge",
+            aggr=kwargs.get("aggr", "ct"),
         )
     elif model_name == "hetero_gat":
         from src.heterogeneous.hetero_gat.model import HeteroGAT

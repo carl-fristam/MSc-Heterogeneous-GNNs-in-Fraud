@@ -12,6 +12,7 @@ Usage:
 """
 
 import numpy as np
+import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
@@ -24,6 +25,28 @@ from sklearn.metrics import (
 
 from src.data.prepare import PreparedData
 from src.utils.threshold_table import print_threshold_table
+
+
+def _tabular_X(prep: PreparedData) -> np.ndarray:
+    """
+    All numeric columns from the raw dataframe, minus identifiers/label/timestamp.
+    This is the full feature set XGBoost trains on — parquet → DataFrame → XGBoost.
+    """
+    col_cfg = prep.col_cfg
+    exclude = {
+        col_cfg.get("label"),
+        col_cfg.get("timestamp"),
+        col_cfg.get("sender"),
+        col_cfg.get("receiver"),
+        col_cfg.get("org_trans_id"),
+        col_cfg.get("customer_id"),
+        col_cfg.get("sender_bank"),
+        "_datetime", "_sender", "_receiver",
+    }
+    exclude.discard(None)
+    num_cols = [c for c in prep.df.columns
+                if c not in exclude and pd.api.types.is_numeric_dtype(prep.df[c])]
+    return prep.df[num_cols].fillna(0).values.astype(np.float32)
 
 # Hyperparameter search space for Bayesian optimisation
 _XGB_SEARCH_SPACE = {
@@ -66,7 +89,7 @@ def _evaluate(y_true, y_prob, y_pred, name: str) -> dict:
 
 def run_logistic_regression(prep: PreparedData) -> dict:
     """Train and evaluate logistic regression on transaction features."""
-    X, y = prep.txn_features, prep.labels
+    X, y = _tabular_X(prep), prep.labels
     train_m, test_m = prep.train_mask.values, prep.test_mask.values
 
     model = LogisticRegression(
@@ -91,7 +114,7 @@ def run_xgboost(prep: PreparedData) -> dict:
         print("xgboost not installed. Run: pip install xgboost")
         return {}
 
-    X, y = prep.txn_features, prep.labels
+    X, y = _tabular_X(prep), prep.labels
     train_m = prep.train_mask.values
     val_m = prep.val_mask.values
     test_m = prep.test_mask.values
