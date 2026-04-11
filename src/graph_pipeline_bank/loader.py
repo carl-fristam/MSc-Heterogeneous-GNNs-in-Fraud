@@ -49,9 +49,8 @@ def load_raw(data_path: str, config: dict) -> pd.DataFrame:
 
     # ── Optional temporal sampling (dev / debug runs) ─────────────────────────
     if sample < 1.0:
-        n_rows = int(len(df) * sample)
-        df = df.head(n_rows).reset_index(drop=True)
-        print(f"  Sample {sample:.0%}: {n_rows:,} rows  "
+        df = df.sample(frac=sample, random_state=42).sort_values("_datetime").reset_index(drop=True)
+        print(f"  Sample {sample:.0%}: {len(df):,} rows  "
               f"({df['_datetime'].min().date()} → {df['_datetime'].max().date()})")
 
     # ── Canonical aliases ─────────────────────────────────────────────────────

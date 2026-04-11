@@ -38,10 +38,11 @@ class PreparedData:
     train_mask: pd.Series
     val_mask: pd.Series
     test_mask: pd.Series
-    txn_features: np.ndarray    # (N, F) transaction-level feature matrix
+    txn_features: np.ndarray    # (N, F) curated edge features for GNNs
     vocabs: dict                # OHE vocabularies from training
     labels: np.ndarray          # (N,) float32
     col_cfg: dict               # config["columns"]
+
 
 
 def prepare_data(config: dict) -> PreparedData:
@@ -85,7 +86,7 @@ def prepare_data(config: dict) -> PreparedData:
     labels = df[col_cfg["label"]].fillna(0).values.astype(np.float32)
 
     print(f"\nPreparedData ready:")
-    print(f"  Rows: {len(df):,}  |  Features: {txn_features.shape[1]}")
+    print(f"  Rows: {len(df):,}  |  GNN edge features: {txn_features.shape[1]}")
     print(f"  Train: {train_mask.sum():,}  |  Val: {val_mask.sum():,}  |  Test: {test_mask.sum():,}")
     print(f"  Fraud: {int(labels.sum()):,} ({100 * labels.mean():.3f}%)")
 
