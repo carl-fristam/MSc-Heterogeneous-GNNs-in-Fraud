@@ -48,10 +48,10 @@ from src.utils.device import get_device
 from src.data.prepare import prepare_data
 
 
-def run_l0(prep):
+def run_l0(prep, tune: bool = False, n_trials: int = 50):
     """L0: Tabular XGBoost — no graph."""
     from src.baselines.tabular import run_tabular_baselines
-    return run_tabular_baselines(prep)
+    return run_tabular_baselines(prep, tune=tune, n_trials=n_trials)
 
 
 def run_l1(prep, config, model_name="sage", **kwargs):
@@ -117,6 +117,7 @@ def run_l2(prep, config, model_name="hgt", **kwargs):
             num_layers=kwargs.get("num_layers", 2),
             hidden_dim=kwargs.get("hidden_dim", 64),
             message_dim=kwargs.get("message_dim", 32),
+            dropout=kwargs.get("dropout", 0.3),
             task="edge",
         )
     elif model_name == "hetero_gat":
@@ -235,6 +236,12 @@ def main():
     parser.add_argument("--data-path", type=str, default=None,
                         help="Override dataset path")
 
+    # L0 Bayesian optimisation
+    parser.add_argument("--tune",     action="store_true",
+                        help="Use Bayesian optimisation for XGBoost (L0 only)")
+    parser.add_argument("--n-trials", type=int, default=50,
+                        help="Number of Bayesian optimisation trials (L0 --tune only)")
+
     # Hyperparameters
     parser.add_argument("--hidden-dim",  type=int,   default=64)
     parser.add_argument("--num-layers",  type=int,   default=2)
@@ -291,7 +298,7 @@ def main():
         for level, model in [(0, None), (1, "sage"), (2, "hgt")]:
             print(f"\n\n{'#'*70}\n# LEVEL {level}\n{'#'*70}")
             if level == 0:
-                results = run_l0(prep)
+                results = run_l0(prep, tune=args.tune, n_trials=args.n_trials)
             elif level == 1:
                 results = run_l1(prep, config, model_name=model, **model_kwargs)
             else:
@@ -310,7 +317,7 @@ def main():
 
     # ── Single level ──────────────────────────────────────────────────────────
     if args.level == 0:
-        results = run_l0(prep)
+        results = run_l0(prep, tune=args.tune, n_trials=args.n_trials)
     elif args.level == 1:
         results = run_l1(prep, config, model_name=args.model, **model_kwargs)
     elif args.level == 2:

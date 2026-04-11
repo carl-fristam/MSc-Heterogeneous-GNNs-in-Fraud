@@ -25,6 +25,19 @@ from sklearn.metrics import (
 from src.data.prepare import PreparedData
 from src.utils.threshold_table import print_threshold_table
 
+# Hyperparameter search space for Bayesian optimisation
+_XGB_SEARCH_SPACE = {
+    "max_depth":        ("int",   3,    10),
+    "learning_rate":    ("float", 0.01, 0.3,  {"log": True}),
+    "n_estimators":     ("int",   100,  600),
+    "subsample":        ("float", 0.6,  1.0),
+    "colsample_bytree": ("float", 0.6,  1.0),
+    "min_child_weight": ("int",   1,    10),
+    "gamma":            ("float", 0.0,  5.0),
+    "reg_alpha":        ("float", 1e-8, 1.0,  {"log": True}),
+    "reg_lambda":       ("float", 1e-8, 3.0,  {"log": True}),
+}
+
 
 def _evaluate(y_true, y_prob, y_pred, name: str) -> dict:
     """Compute and print standard metrics."""
@@ -121,9 +134,93 @@ def run_xgboost(prep: PreparedData) -> dict:
     return metrics
 
 
-def run_tabular_baselines(prep: PreparedData) -> list[dict]:
-    """Run all L0 baselines and return results."""
-    return [
-        # run_logistic_regression(prep),
-        run_xgboost(prep),
-    ]
+def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50) -> dict:
+    """
+    XGBoost with Bayesian hyperparameter optimisation via optuna.
+
+    Runs n_trials smart trials on the validation set (maximising AUPRC),
+    then trains a final model with the best params and evaluates on test.
+    """
+    try:
+        import optuna
+        from xgboost import XGBClassifier
+    except ImportError as e:
+        print(f"Missing dependency: {e}. Run: pip install optuna xgboost")
+        return {}
+
+    X, y   = prep.txn_features, prep.labels
+    train_m = prep.train_mask.values
+    val_m   = prep.val_mask.values
+    test_m  = prep.test_mask.values
+
+    n_neg     = (y[train_m] == 0).sum()
+    n_pos     = (y[train_m] == 1).sum()
+    scale_pos = n_neg / n_pos if n_pos > 0 else 1.0
+
+    def _suggest(trial, name, spec):
+        kind = spec[0]
+        if kind == "int":
+            return trial.suggest_int(name, spec[1], spec[2])
+        kwargs = spec[3] if len(spec) > 3 else {}
+        return trial.suggest_float(name, spec[1], spec[2], **kwargs)
+
+    def objective(trial):
+        params = {name: _suggest(trial, name, spec) for name, spec in _XGB_SEARCH_SPACE.items()}
+        params.update({"scale_pos_weight": scale_pos, "tree_method": "hist",
+                       "eval_metric": "aucpr", "n_jobs": -1})
+        model = XGBClassifier(**params)
+        model.fit(X[train_m], y[train_m],
+                  eval_set=[(X[val_m], y[val_m])],
+                  verbose=False)
+        return average_precision_score(y[val_m], model.predict_proba(X[val_m])[:, 1])
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    study = optuna.create_study(direction="maximize",
+                                sampler=optuna.samplers.TPESampler(seed=42))
+
+    print(f"\nBayesian optimisation: {n_trials} trials on val AUPRC ...")
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+
+    print(f"\n  Best val AUPRC : {study.best_value:.4f}")
+    print(f"  Best params    :")
+    for k, v in study.best_params.items():
+        print(f"    {k}: {v}")
+
+    # ── Final model with best params ──────────────────────────────────────────
+    best = {**study.best_params,
+            "scale_pos_weight": scale_pos,
+            "tree_method": "hist",
+            "eval_metric": "aucpr",
+            "n_jobs": -1}
+
+    final_model = XGBClassifier(**best)
+    final_model.fit(X[train_m], y[train_m],
+                    eval_set=[(X[val_m], y[val_m])],
+                    verbose=False)
+
+    # Threshold optimisation on val
+    y_val_prob = final_model.predict_proba(X[val_m])[:, 1]
+    best_t, best_f1 = 0.5, 0.0
+    for t in np.arange(0.05, 0.95, 0.01):
+        f1 = f1_score(y[val_m], (y_val_prob >= t).astype(int), zero_division=0)
+        if f1 > best_f1:
+            best_f1, best_t = f1, t
+    print(f"  Optimal threshold (val F1): {best_t:.2f} (F1={best_f1:.4f})")
+
+    y_prob = final_model.predict_proba(X[test_m])[:, 1]
+    y_pred = (y_prob >= best_t).astype(int)
+
+    metrics = _evaluate(y[test_m], y_prob, y_pred, "XGBoost (Bayesian tuned)")
+    base_val_col = prep.col_cfg.get("base_value")
+    amounts = prep.df[base_val_col].values[test_m] if base_val_col else None
+    print_threshold_table(y[test_m], y_prob, amounts=amounts,
+                          model_name="XGBoost (Bayesian tuned)")
+    return metrics
+
+
+def run_tabular_baselines(prep: PreparedData, tune: bool = False,
+                          n_trials: int = 50) -> list[dict]:
+    """Run L0 baselines. Pass tune=True to use Bayesian optimisation for XGBoost."""
+    if tune:
+        return [run_xgboost_bayes(prep, n_trials=n_trials)]
+    return [run_xgboost(prep)]
