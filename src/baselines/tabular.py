@@ -23,6 +23,7 @@ from sklearn.metrics import (
 )
 
 from src.data.prepare import PreparedData
+from src.utils.threshold_table import print_threshold_table
 
 
 def _evaluate(y_true, y_prob, y_pred, name: str) -> dict:
@@ -111,7 +112,13 @@ def run_xgboost(prep: PreparedData) -> dict:
     y_prob = model.predict_proba(X[test_m])[:, 1]
     y_pred = (y_prob >= best_t).astype(int)
 
-    return _evaluate(y[test_m], y_prob, y_pred, "XGBoost")
+    metrics = _evaluate(y[test_m], y_prob, y_pred, "XGBoost")
+
+    base_val_col = prep.col_cfg.get("base_value")
+    amounts = prep.df[base_val_col].values[test_m] if base_val_col else None
+    print_threshold_table(y[test_m], y_prob, amounts=amounts, model_name="XGBoost")
+
+    return metrics
 
 
 def run_tabular_baselines(prep: PreparedData) -> list[dict]:
