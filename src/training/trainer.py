@@ -29,6 +29,7 @@ from sklearn.metrics import (
 )
 
 from src.utils.class_weights import compute_class_weights
+from src.utils.threshold_table import print_threshold_table
 
 
 @dataclass
@@ -236,5 +237,7 @@ class Trainer:
         print(f"  Precision: {metrics['precision']:.4f}")
         print(f"  Recall:    {metrics['recall']:.4f}")
         print(f"  Confusion matrix:\n{metrics['confusion_matrix']}")
+
+        print_threshold_table(test_labels, test_probs, model_name=self.config.graph_type)
 
         return metrics
