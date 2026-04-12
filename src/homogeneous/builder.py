@@ -85,18 +85,21 @@ def project_to_homo(hetero_data) -> Data:
         ei = hetero_data[et].edge_index.clone()
         ei[0] += node_offsets[src_type]
         ei[1] += node_offsets[dst_type]
-        ei_parts.append(ei)
 
         ea = getattr(hetero_data[et], "edge_attr", None)
-        if ea is not None:
-            ea_parts.append(ea)
+        y  = getattr(hetero_data[et], "y", None)
 
-        y = getattr(hetero_data[et], "y", None)
-        if y is not None:
-            y_parts.append(y)
-            train_parts.append(hetero_data[et].train_mask)
-            val_parts.append(hetero_data[et].val_mask)
-            test_parts.append(hetero_data[et].test_mask)
+        # Only include edge types that have features and labels —
+        # otherwise edge_index and edge_attr dimensions won't align
+        if ea is None or y is None:
+            continue
+
+        ei_parts.append(ei)
+        ea_parts.append(ea)
+        y_parts.append(y)
+        train_parts.append(hetero_data[et].train_mask)
+        val_parts.append(hetero_data[et].val_mask)
+        test_parts.append(hetero_data[et].test_mask)
 
     data = Data()
     data.x = x_homo

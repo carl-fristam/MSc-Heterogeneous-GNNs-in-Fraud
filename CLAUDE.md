@@ -10,11 +10,11 @@ Core research question: _Does preserving heterogeneous structure in a transactio
 
 The experimental design is a three-level ladder. Each rung isolates one design decision:
 
-| Level | What runs | Models | Isolates |
-|-------|-----------|--------|----------|
-| L0 | Tabular XGBoost | — | Floor: no graph at all |
-| L1 | Homo GNN | GCN, GraphSAGE, GAT | Does any graph structure help? |
-| L2 | Hetero GNN | HGT, HMPNN, HeteroGAT | Does heterogeneous structure specifically help? |
+| Mode | What runs | Models | Isolates |
+|------|-----------|--------|----------|
+| tab  | Tabular XGBoost | — | Floor: no graph at all |
+| homo | Homo GNN | GCN, GraphSAGE, GAT | Does any graph structure help? |
+| het  | Hetero GNN | HGT, HMPNN, HeteroGAT | Does heterogeneous structure specifically help? |
 
 All GNN experiments use **edge classification** on the bank payment graph with `internal_account` and `external_account` node types. The ladder and current models are reflected in `run.py` and `src/`.
 
@@ -23,10 +23,10 @@ All GNN experiments use **edge classification** on the bank payment graph with `
 `run.py` is the single entry point. Use `--sample 0.05` for dev/debug runs.
 
 ```
-python run.py --level 0                          # tabular baseline
-python run.py --level 1 --model sage             # homo GNN
-python run.py --level 2 --model hgt              # hetero GNN
-python run.py --level 2 --model hgt --sample 0.05
+python run.py --mode tab                          # tabular baseline
+python run.py --mode homo --model sage            # homo GNN
+python run.py --mode het --model hgt              # hetero GNN
+python run.py --mode het --model hgt --sample 0.05
 ```
 
 For local testing without the real dataset: `python mock_run.py` and `python sanity_check.py`.
@@ -42,8 +42,8 @@ For local testing without the real dataset: `python mock_run.py` and `python san
 One active variant: **V1** (hardcoded in `run.py` via `load_variant("v1")`).
 
 **Node types:**
-- `internal_account` — Danske Bank accounts (senders). Features: out-degree, amount stats, counterparty diversity, channel diversity, time behavior, branch OHE, sender bank OHE.
-- `external_account` — counterparty accounts (receivers only, never senders). Features: in-degree, received amount stats, sender diversity, sender bank diversity, counterparty bank OHE, account format OHE.
+- `internal_account` — Danske Bank accounts (senders). Features: branch OHE, sender bank OHE.
+- `external_account` — counterparty accounts (receivers only, never senders). Features: counterparty bank OHE, account format OHE.
 
 **Edge types (V1):**
 - `onus_transfer` — internal → internal (TRANSACTIONONUS == True)
