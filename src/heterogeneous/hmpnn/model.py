@@ -1,20 +1,48 @@
 """
 HMPNN — Heterogeneous Message Passing Neural Network.
-Faithful implementation of Johannessen & Jullum (2023).
-https://github.com/fredjo89/heterogeneous-mpnn
 
-Two aggregation variants:
-  CT  (default) — one NNConv per relation, messages concatenated across
-                  relations then projected. Preserves per-relation signal.
-  Sum           — all relations summed via a single HeteroConv. Ablation.
+Original:  Johannessen & Jullum (2023)
+           https://github.com/fredjo89/heterogeneous-mpnn
 
-Both use aggr="sum" within each relation (NNConv), matching the original.
-Sigmoid activations throughout, matching the original.
+---------------------------------------------------------------------------
+What we kept from the original
+---------------------------------------------------------------------------
+- Two aggregation variants:
+    CT  (default) — one NNConv per relation, messages concatenated across
+                    relations then projected. Their main model.
+    Sum           — all relations summed via a single HeteroConv. Ablation.
+- aggr="sum" within each relation via NNConv — matches the original exactly.
+- Sigmoid activations throughout each layer.
+- NNConv as the message function: edge features produce a weight matrix that
+  modulates the source node embedding (Gilmer et al., 2017).
 
-Task adaptation:
-  The original does node classification. We do edge classification:
-  HMPNN layers produce node embeddings; the Trainer scores edges via
-  self.classifier(concat(src_emb, dst_emb)).
+---------------------------------------------------------------------------
+What we changed
+---------------------------------------------------------------------------
+- Task: node classification → edge classification.
+  The HMPNN layers still run identically and produce node embeddings.
+  The Trainer then scores each transaction edge by concatenating
+  (src_emb, dst_emb) and passing through an MLP classifier head.
+
+- Forward signature: the original takes (x_dict, edge_index_dict,
+  edge_attr_dict) separately. Ours accepts a HeteroData object directly
+  and unpacks internally, matching the shared Trainer interface used by
+  HGT and HeteroGAT.
+
+- Classifier: self.classifier is an MLP on hidden_dim * 2 inputs for the
+  edge task, or a single Linear for the node task.
+
+---------------------------------------------------------------------------
+Graph structure
+---------------------------------------------------------------------------
+- Two node types: internal_account, external_account
+- V1: two edge types — onus_transfer (internal → internal),
+                        external_transfer (internal → external)
+- V2: five edge types — onus_transfer + four external types split by
+                        payment rail (realtime, giro, future, other)
+- Each edge carries transaction features (amount, channel, payment method,
+  currency, destination, time encoding).
+- Labels live on edges — each transaction is either fraud or not.
 """
 
 import torch
