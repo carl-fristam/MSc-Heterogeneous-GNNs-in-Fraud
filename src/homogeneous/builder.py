@@ -13,7 +13,7 @@ edges with their features and labels — exactly the comparison we want for
 "hetero structure vs. same graph treated as homogeneous."
 
 Usage:
-    from src.graph_pipeline_bank import build_graph
+    from src.graph_builder.assembler import build_graph
     from src.homogeneous.builder import project_to_homo
 
     hetero_result = build_graph(config, prep=prep)
@@ -29,7 +29,7 @@ def project_to_homo(hetero_data) -> Data:
     Project a HeteroData graph to a homogeneous PyG Data object.
 
     Args:
-        hetero_data: PyG HeteroData built by graph_pipeline_bank
+        hetero_data: PyG HeteroData built by src.graph_builder.assembler
 
     Returns:
         PyG Data with fields:

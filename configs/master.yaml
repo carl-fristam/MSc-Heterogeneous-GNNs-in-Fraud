@@ -147,11 +147,7 @@ edge_features:
   - submethod_ohe        # pre-encoded: PAYMENTSUBMETHOD_* columns
   - clearing_ohe         # pre-encoded: PAYMENTCLEARING_* columns
   - currency_ohe         # pre-encoded: CURRENCY_TBE_* columns
-  - counter_agent_ohe    # pre-encoded: COUNTERAGENT_TBE_* columns
-  - sender_bank_ohe      # pre-encoded: ACCOUNTAGENTID_* columns
-  - counter_id_format    # pre-encoded: COUNTERIDFORMAT_* columns
   - destination_ohe      # pre-encoded: DESTINATION_TBE_* columns
-  - branch_tbe_ohe       # pre-encoded: ACCOUNTBRANCH_TBE_* columns
   - international_flag
   - time_encoding
 
@@ -167,6 +163,8 @@ node_features:
       - counterparty_diversity
       - channel_diversity
       - time_behavior
+      - branch_tbe        # pre-encoded: ACCOUNTBRANCH_TBE_* columns — property of the sender account
+      - sender_bank       # pre-encoded: ACCOUNTAGENTID_* columns — which Danske Bank entity
 
   external_account:
     id_col: COUNTERENTITYID
@@ -176,6 +174,8 @@ node_features:
       - received_amount_stats
       - sender_diversity
       - sender_bank_diversity
+      - counter_agent     # pre-encoded: COUNTERAGENT_TBE_* columns — which bank the counterparty is at
+      - counter_id_format # pre-encoded: COUNTERIDFORMAT_* columns — BBAN or IBAN
 
 
 # ==============================================================================
@@ -198,34 +198,3 @@ variants:
         dst:  external_account
         filter: "TRANSACTIONONUS == False"
 
-  # ── V2: Payment rail typed edges ─────────────────────────────────────────
-  # Splits external transfers by payment submethod using OHE columns.
-  # (No raw PAYMENTSUBMETHOD column in the dataset — only OHE'd variants.)
-  # Salary is not present as an OHE column so is excluded.
-  v2:
-    nodes: [internal_account, external_account]
-    edges:
-      - name: onus_transfer
-        src:  internal_account
-        dst:  internal_account
-        filter: "TRANSACTIONONUS == True"
-
-      - name: ext_realtime
-        src:  internal_account
-        dst:  external_account
-        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD_realTime == 1"
-
-      - name: ext_giro
-        src:  internal_account
-        dst:  external_account
-        filter: "TRANSACTIONONUS == False and (PAYMENTSUBMETHOD_bankGiro == 1 or PAYMENTSUBMETHOD_plusGiro == 1)"
-
-      - name: ext_future
-        src:  internal_account
-        dst:  external_account
-        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD_futurePayment == 1"
-
-      - name: ext_other
-        src:  internal_account
-        dst:  external_account
-        filter: "TRANSACTIONONUS == False and PAYMENTSUBMETHOD_realTime != 1 and PAYMENTSUBMETHOD_bankGiro != 1 and PAYMENTSUBMETHOD_plusGiro != 1 and PAYMENTSUBMETHOD_futurePayment != 1"

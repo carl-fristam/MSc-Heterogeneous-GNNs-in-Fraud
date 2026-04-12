@@ -9,8 +9,8 @@
 *.h5
 
 # Specific large folders
-datasets/SAML-D.csv
-data/**
+datasets/            # raw data — never commit (sensitive / large)
+data/**              # graph cache
 references/**/data/
 outputs/
 models/
