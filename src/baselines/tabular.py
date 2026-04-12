@@ -1,5 +1,5 @@
 """
-L0 — Tabular baselines: Logistic Regression and XGBoost on transaction features.
+Tabular baselines: Logistic Regression and XGBoost on transaction features.
 
 No graph structure. Establishes the floor that graph-based models must beat.
 
@@ -41,6 +41,7 @@ def _tabular_X(prep: PreparedData) -> np.ndarray:
         col_cfg.get("org_trans_id"),
         col_cfg.get("customer_id"),
         col_cfg.get("sender_bank"),
+        "COUNTERENTITYID",
         "_datetime", "_sender", "_receiver",
     }
     exclude.discard(None)
@@ -171,7 +172,7 @@ def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50) -> dict:
         print(f"Missing dependency: {e}. Run: pip install optuna xgboost")
         return {}
 
-    X, y   = prep.txn_features, prep.labels
+    X, y   = _tabular_X(prep), prep.labels
     train_m = prep.train_mask.values
     val_m   = prep.val_mask.values
     test_m  = prep.test_mask.values
@@ -243,7 +244,7 @@ def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50) -> dict:
 
 def run_tabular_baselines(prep: PreparedData, tune: bool = False,
                           n_trials: int = 50) -> list[dict]:
-    """Run L0 baselines. Pass tune=True to use Bayesian optimisation for XGBoost."""
+    """Run tabular baselines. Pass tune=True to use Bayesian optimisation for XGBoost."""
     if tune:
         return [run_xgboost_bayes(prep, n_trials=n_trials)]
     return [run_xgboost(prep)]

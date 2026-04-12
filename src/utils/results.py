@@ -12,9 +12,9 @@ from pathlib import Path
 from src.utils.config import PROJECT_ROOT
 
 
-def save_results(metrics: dict, level: int, model: str = None, **kwargs):
+def save_results(metrics: dict, mode: str, model: str = None, **kwargs):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir   = _results_dir(level, model=model) / f"{_run_name(model)}_{timestamp}"
+    run_dir   = _results_dir(mode, model=model) / f"{_run_name(model)}_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     # make sure numpy values are serialisable
@@ -23,24 +23,24 @@ def save_results(metrics: dict, level: int, model: str = None, **kwargs):
         for k, v in metrics.items()
     }
 
-    meta = {"level": level, "timestamp": timestamp, "model": model, **kwargs}
+    meta = {"mode": mode, "timestamp": timestamp, "model": model, **kwargs}
     with open(run_dir / "metrics.json", "w") as f:
         json.dump({"meta": meta, "metrics": serializable}, f, indent=2)
 
     with open(run_dir / "report.md", "w") as f:
-        f.write(_build_report(model, level, timestamp, serializable, kwargs))
+        f.write(_build_report(model, mode, timestamp, serializable, kwargs))
 
     print(f"\nResults saved to: {run_dir.relative_to(PROJECT_ROOT)}/")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _results_dir(level: int, model: str = None) -> Path:
-    if level == 0:
+def _results_dir(mode: str, model: str = None) -> Path:
+    if mode == "tab":
         return PROJECT_ROOT / "src" / "baselines" / "tabular" / "results"
-    elif level == 1:
+    elif mode == "homo":
         return PROJECT_ROOT / "src" / "homogeneous" / (model or "unknown") / "results"
-    elif level == 2:
+    elif mode == "het":
         return PROJECT_ROOT / "src" / "heterogeneous" / (model or "unknown") / "results"
     return PROJECT_ROOT / "results"
 
@@ -49,7 +49,7 @@ def _run_name(model: str = None) -> str:
     return model if model else "run"
 
 
-def _build_report(model, level, timestamp, metrics, kwargs) -> str:
+def _build_report(model, mode, timestamp, metrics, kwargs) -> str:
     cm     = metrics.get("confusion_matrix")
     cm_str = ""
     if cm:
@@ -60,7 +60,7 @@ def _build_report(model, level, timestamp, metrics, kwargs) -> str:
             f"| **Actual 1** | {cm[1][0]} | {cm[1][1]} |\n"
         )
 
-    header = f"# {model or 'run'}\n\n**Date:** {timestamp}  \n**Level:** {level}  \n"
+    header = f"# {model or 'run'}\n\n**Date:** {timestamp}  \n**Mode:** {mode}  \n"
     for k, v in kwargs.items():
         if v is not None:
             header += f"**{k.title()}:** {v}  \n"

@@ -3,15 +3,15 @@ Main experiment runner.
 
 Experiment ladder:
 
-  L0 — Tabular baseline (XGBoost, no graph)
-  L1 — Homogeneous GNN  (gcn | sage | gat)
-  L2 — Heterogeneous GNN (hgt | hmpnn | hetero_gat)
+  tab  — Tabular baseline (XGBoost, no graph)
+  homo — Homogeneous GNN  (gcn | sage | gat)
+  het  — Heterogeneous GNN (hgt | hmpnn | hetero_gat)
 
 Usage:
-    python run.py --level 0
-    python run.py --level 1 --model sage
-    python run.py --level 2 --model hgt
-    python run.py --level 2 --model hgt --sample 0.05   # dev run
+    python run.py --mode tab
+    python run.py --mode homo --model sage
+    python run.py --mode het --model hgt
+    python run.py --mode het --model hgt --sample 0.05   # dev run
 """
 
 import argparse
@@ -22,12 +22,12 @@ from src.utils.results import save_results
 from src.data.prepare import prepare_data
 
 
-def run_l0(prep, tune: bool = False, n_trials: int = 50):
+def run_tab(prep, tune: bool = False, n_trials: int = 50):
     from src.baselines.tabular import run_tabular_baselines
     return run_tabular_baselines(prep, tune=tune, n_trials=n_trials)
 
 
-def run_l1(prep, config, model_name="sage", **kwargs):
+def run_homo(prep, config, model_name="sage", **kwargs):
     from src.graph_builder.assembler import build_graph
     from src.homogeneous.builder import project_to_homo
     from src.homogeneous.models import HomoGNN
@@ -56,7 +56,7 @@ def run_l1(prep, config, model_name="sage", **kwargs):
     return trainer.run()
 
 
-def run_l2(prep, config, model_name="hgt", **kwargs):
+def run_het(prep, config, model_name="hgt", **kwargs):
     from src.graph_builder.assembler import build_graph
     from src.training.trainer import Trainer, TrainConfig
 
@@ -99,7 +99,7 @@ def run_l2(prep, config, model_name="hgt", **kwargs):
             target_node_type = target_node_type,
         )
     else:
-        raise ValueError(f"Unknown L2 model: {model_name!r}. Choose hgt | hmpnn | hetero_gat")
+        raise ValueError(f"Unknown het model: {model_name!r}. Choose hgt | hmpnn | hetero_gat")
 
     trainer = Trainer(model, data, TrainConfig(
         task             = "edge",
@@ -117,15 +117,15 @@ def run_l2(prep, config, model_name="hgt", **kwargs):
 
 def main():
     parser = argparse.ArgumentParser(description="Run fraud detection experiments")
-    parser.add_argument("--level",  type=int, choices=[0, 1, 2], required=True,
-                        help="0=tabular  1=homo GNN  2=hetero GNN")
+    parser.add_argument("--mode",   type=str, choices=["tab", "homo", "het"], required=True,
+                        help="tab=tabular  homo=homo GNN  het=hetero GNN")
     parser.add_argument("--model",  type=str, default="sage",
                         choices=["gcn", "sage", "gat", "hgt", "hmpnn", "hetero_gat"])
     parser.add_argument("--sample", type=float, default=None,
                         help="Fraction of data to use (e.g. 0.05 for dev runs)")
     parser.add_argument("--data-path", type=str, default=None)
 
-    # L0 tuning
+    # Tabular tuning
     parser.add_argument("--tune",     action="store_true")
     parser.add_argument("--n-trials", type=int, default=50)
 
@@ -172,19 +172,19 @@ def main():
         "patience":   args.patience,
     }
 
-    if args.level == 0:
-        results = run_l0(prep, tune=args.tune, n_trials=args.n_trials)
-    elif args.level == 1:
-        results = run_l1(prep, config, model_name=args.model, **model_kwargs)
-    elif args.level == 2:
-        results = run_l2(prep, config, model_name=args.model, **model_kwargs)
+    if args.mode == "tab":
+        results = run_tab(prep, tune=args.tune, n_trials=args.n_trials)
+    elif args.mode == "homo":
+        results = run_homo(prep, config, model_name=args.model, **model_kwargs)
+    elif args.mode == "het":
+        results = run_het(prep, config, model_name=args.model, **model_kwargs)
 
-    save_kwargs = {"model": args.model if args.level > 0 else None}
+    save_kwargs = {"model": args.model if args.mode != "tab" else None}
     if isinstance(results, list):
         for r in results:
-            if r: save_results(r, args.level, **save_kwargs)
+            if r: save_results(r, args.mode, **save_kwargs)
     elif results:
-        save_results(results, args.level, **save_kwargs)
+        save_results(results, args.mode, **save_kwargs)
 
 
 if __name__ == "__main__":

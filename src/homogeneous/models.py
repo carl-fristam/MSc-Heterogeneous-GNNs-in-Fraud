@@ -1,5 +1,5 @@
 """
-Homogeneous GNN models for L1 edge classification.
+Homogeneous GNN models for homo edge classification.
 
 Three architectures:
   gcn   — GCNConv layers (no edge features in message passing)

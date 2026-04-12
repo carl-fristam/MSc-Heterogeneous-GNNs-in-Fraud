@@ -77,11 +77,18 @@ class HeteroGAT(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
+        edge_feat_dim = 0
+        if task == "edge":
+            for et in edge_types:
+                if hasattr(data[et], "edge_attr") and data[et].edge_attr is not None:
+                    edge_feat_dim = data[et].edge_attr.shape[1]
+                    break
+
         if task == "node":
             self.classifier = nn.Linear(hidden_dim, 1)
         else:
             self.classifier = nn.Sequential(
-                nn.Linear(hidden_dim * 2, hidden_dim),
+                nn.Linear(hidden_dim * 2 + edge_feat_dim, hidden_dim),
                 nn.ReLU(),
                 nn.Dropout(dropout),
                 nn.Linear(hidden_dim, 1),

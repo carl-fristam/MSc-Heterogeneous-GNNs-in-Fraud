@@ -1,5 +1,5 @@
 """
-Unified training loop for all GNN models (L1 homo and L2 hetero).
+Unified training loop for all GNN models (homo and het).
 
 Supports:
   - Homogeneous edge classification (GCN, GraphSAGE, GAT on projected Data)
@@ -14,7 +14,7 @@ Usage:
 """
 
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -43,7 +43,7 @@ class TrainConfig:
     scheduler: bool = True
     dropout: float = 0.3
     no_class_weight: bool = False
-    target_node_type: str = "transaction"
+    target_node_type: str = "internal_account"
 
 
 class Trainer:
@@ -98,14 +98,17 @@ class Trainer:
                 self.test_mask = torch.cat(tests)
 
     def _compute_edge_logits_hetero(self, x_dict):
-        """Score all labelled edges by concatenating src + dst embeddings."""
+        """Score all labelled edges by concatenating src + dst embeddings + edge features."""
         logits_list = []
         for et, (start, end) in self.edge_type_slices.items():
             src_type, _, dst_type = et
             edge_index = self.data[et].edge_index
             src_emb = x_dict[src_type][edge_index[0]]
             dst_emb = x_dict[dst_type][edge_index[1]]
-            edge_emb = torch.cat([src_emb, dst_emb], dim=1)
+            parts = [src_emb, dst_emb]
+            if hasattr(self.data[et], "edge_attr") and self.data[et].edge_attr is not None:
+                parts.append(self.data[et].edge_attr)
+            edge_emb = torch.cat(parts, dim=1)
             logits_list.append(self.model.classifier(edge_emb).squeeze(-1))
         return torch.cat(logits_list)
 
@@ -210,14 +213,25 @@ class Trainer:
         return {"loss": val_loss, "auroc": auroc, "auprc": auprc}
 
     def _test(self) -> dict:
-        """Final test evaluation."""
+        """Final test evaluation with val-optimised threshold."""
         self.model.eval()
         with torch.no_grad():
             logits = self._forward()
+
+            # Optimise threshold on validation set
+            val_probs = torch.sigmoid(logits[self.val_mask]).cpu().numpy()
+            val_labels = self.y[self.val_mask].cpu().numpy()
+            best_t, best_f1 = 0.5, 0.0
+            for t in np.arange(0.05, 0.95, 0.01):
+                f = f1_score(val_labels, (val_probs >= t).astype(int), zero_division=0)
+                if f > best_f1:
+                    best_f1, best_t = f, t
+            print(f"\n  Optimal threshold (val F1): {best_t:.2f} (F1={best_f1:.4f})")
+
             test_probs = torch.sigmoid(logits[self.test_mask]).cpu().numpy()
             test_labels = self.y[self.test_mask].cpu().numpy()
 
-        test_preds = (test_probs >= 0.5).astype(int)
+        test_preds = (test_probs >= best_t).astype(int)
 
         metrics = {
             "auroc": roc_auc_score(test_labels, test_probs) if test_labels.sum() > 0 else 0.0,
