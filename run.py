@@ -3,15 +3,22 @@ Main experiment runner.
 
 Experiment ladder:
 
-  tab  — Tabular baseline (XGBoost, no graph)
-  homo — Homogeneous GNN  (gcn | sage | gat)
-  het  — Heterogeneous GNN (hgt | hmpnn | hetero_gat)
+  tab   — Tabular baseline (XGBoost, no graph)
+  homo  — Homogeneous GNN  (gcn | sage | gat)
+  het   — Heterogeneous GNN (hgt | hmpnn | hetero_gat)
+  hgmae — Heterogeneous Graph Masked AutoEncoder (pretrain + anomaly detection)
 
 Usage:
     python run.py --mode tab
     python run.py --mode homo --model sage
     python run.py --mode het --model hgt
-    python run.py --mode het --model hgt --sample 0.05   # dev run
+    python run.py --mode het --model hgt --sample 0.05
+
+    # HGMAE: pretrain then evaluate anomaly detection
+    python run.py --mode hgmae
+
+    # Enriched het GNN: load pretrained HGMAE, enrich node features, train classifier
+    python run.py --mode het --model hgt --enrich models/hgmae/pretrained.pt
 """
 
 import argparse
@@ -56,13 +63,18 @@ def run_homo(prep, config, model_name="sage", **kwargs):
     return trainer.run()
 
 
-def run_het(prep, config, model_name="hgt", **kwargs):
+def run_het(prep, config, model_name="hgt", enrich_path=None, **kwargs):
     from src.graph_builder.assembler import build_graph
     from src.training.trainer import Trainer, TrainConfig
 
     device           = get_device()
     target_node_type = "internal_account"
-    data             = build_graph(config, prep)["data"].to(device)
+    data             = build_graph(config, prep)["data"]
+
+    if enrich_path is not None:
+        data = _enrich_with_hgmae(data, enrich_path, config, device)
+
+    data = data.to(device)
 
     if model_name == "hgt":
         from src.heterogeneous.hgt.model import HGT
@@ -113,12 +125,53 @@ def run_het(prep, config, model_name="hgt", **kwargs):
     return trainer.run()
 
 
+def run_hgmae(prep, config, **kwargs):
+    """Pretrain HGMAE then evaluate anomaly detection on test edges."""
+    from src.graph_builder.assembler import build_graph
+    from src.heterogeneous.hgmae.pretrain import pretrain, PretrainConfig
+    from src.heterogeneous.hgmae.anomaly import evaluate_anomaly
+
+    device = get_device()
+    data   = build_graph(config, prep)["data"].to(device)
+
+    cfg = PretrainConfig(
+        epochs             = kwargs.get("epochs",     300),
+        lr                 = kwargs.get("lr",         1e-3),
+        hidden_dim         = kwargs.get("hidden_dim", 256),
+        num_heads          = kwargs.get("num_heads",  4),
+        num_encoder_layers = kwargs.get("num_layers", 2),
+        patience           = kwargs.get("patience",   30),
+    )
+
+    model   = pretrain(data, cfg, device)
+    metrics = evaluate_anomaly(model, data, save_dir="outputs/hgmae")
+    return metrics
+
+
+def _enrich_with_hgmae(data, checkpoint_path: str, config: dict, device):
+    """Load pretrained HGMAE, encode the graph, concatenate embeddings to node features."""
+    import torch
+    from src.heterogeneous.hgmae.pretrain import load_pretrained, PretrainConfig
+
+    print(f"\nEnriching node features with HGMAE embeddings from: {checkpoint_path}")
+    cfg        = PretrainConfig()
+    model      = load_pretrained(data.to(device), checkpoint_path, cfg, device)
+    embeddings = model.encode(data.to(device))
+
+    for nt, emb in embeddings.items():
+        data[nt].x = torch.cat([data[nt].x.to(device), emb], dim=1)
+        print(f"  {nt}: feat dim → {data[nt].x.shape[1]} (after concat)")
+
+    return data
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Run fraud detection experiments")
-    parser.add_argument("--mode",   type=str, choices=["tab", "homo", "het"], required=True,
-                        help="tab=tabular  homo=homo GNN  het=hetero GNN")
+    parser.add_argument("--mode",   type=str,
+                        choices=["tab", "homo", "het", "hgmae"], required=True,
+                        help="tab | homo | het | hgmae")
     parser.add_argument("--model",  type=str, default="hgt",
                         choices=["gcn", "sage", "gat", "hgt", "hmpnn", "hetero_gat"])
     parser.add_argument("--sample", type=float, default=None,
@@ -128,6 +181,12 @@ def main():
     # Tabular tuning
     parser.add_argument("--tune",     action="store_true")
     parser.add_argument("--n-trials", type=int, default=50)
+
+    # HGMAE enrichment for het mode
+    parser.add_argument("--enrich", type=str, default=None,
+                        metavar="CHECKPOINT",
+                        help="Path to pretrained HGMAE checkpoint — enriches node "
+                             "features before het GNN training")
 
     # Hyperparameters
     parser.add_argument("--hidden-dim",  type=int,   default=64)
@@ -177,9 +236,12 @@ def main():
     elif args.mode == "homo":
         results = run_homo(prep, config, model_name=args.model, **model_kwargs)
     elif args.mode == "het":
-        results = run_het(prep, config, model_name=args.model, **model_kwargs)
+        results = run_het(prep, config, model_name=args.model,
+                          enrich_path=args.enrich, **model_kwargs)
+    elif args.mode == "hgmae":
+        results = run_hgmae(prep, config, **model_kwargs)
 
-    save_kwargs = {"model": args.model if args.mode != "tab" else None}
+    save_kwargs = {"model": args.model if args.mode not in ("tab", "hgmae") else None}
     if isinstance(results, list):
         for r in results:
             if r: save_results(r, args.mode, **save_kwargs)
