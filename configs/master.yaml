@@ -22,12 +22,10 @@
 data_path: datasets/TRANSACTIONS_almost_clean.parquet
 sample_ratio: 1.0   # 0.01 for dev
 
-truncate_after: "2024-12-31"  # fraud labels only cover up to this date
-
 split:
   method: temporal
-  train_end: "2024-11-20"
-  val_end:   "2024-12-10"
+  train_end: "2025-07-01"
+  val_end:   "2025-12-31"
 
 cache:
   enabled: true

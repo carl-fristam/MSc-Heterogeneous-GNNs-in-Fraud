@@ -62,7 +62,7 @@ def run_het(prep, config, model_name="hgt", **kwargs):
 
     device           = get_device()
     target_node_type = "internal_account"
-    data             = build_graph(config, prep)["data"]
+    data             = build_graph(config, prep)["data"].to(device)
 
     if model_name == "hgt":
         from src.heterogeneous.hgt.model import HGT
@@ -119,7 +119,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run fraud detection experiments")
     parser.add_argument("--mode",   type=str, choices=["tab", "homo", "het"], required=True,
                         help="tab=tabular  homo=homo GNN  het=hetero GNN")
-    parser.add_argument("--model",  type=str, default="sage",
+    parser.add_argument("--model",  type=str, default="hgt",
                         choices=["gcn", "sage", "gat", "hgt", "hmpnn", "hetero_gat"])
     parser.add_argument("--sample", type=float, default=None,
                         help="Fraction of data to use (e.g. 0.05 for dev runs)")
