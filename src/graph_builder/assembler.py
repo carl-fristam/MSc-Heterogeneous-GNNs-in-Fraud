@@ -102,6 +102,7 @@ def build_graph(config: dict, prep) -> dict:
         data[et].edge_index = b.edge_index
         data[et].edge_attr  = b.edge_attr
         data[et].y          = b.y
+        data[et].amounts    = b.amounts
         data[et].train_mask = b.train_mask
         data[et].val_mask   = b.val_mask
         data[et].test_mask  = b.test_mask

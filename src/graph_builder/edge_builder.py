@@ -26,6 +26,7 @@ class EdgeBundle:
     edge_index: torch.Tensor   # shape (2, num_edges) — integer node indices
     edge_attr:  torch.Tensor   # shape (num_edges, num_features)
     y:          torch.Tensor   # shape (num_edges,) — fraud labels
+    amounts:    torch.Tensor   # shape (num_edges,) — raw BASEVALUE (for threshold table)
     train_mask: torch.Tensor
     val_mask:   torch.Tensor
     test_mask:  torch.Tensor
@@ -105,7 +106,8 @@ def build_all_edges(
         feat_arr  = build_edge_features(sub, col_cfg, stats)
         edge_attr = torch.tensor(feat_arr, dtype=torch.float32)
 
-        y = torch.tensor(sub[label_col].fillna(0).values, dtype=torch.float32)
+        y       = torch.tensor(sub[label_col].fillna(0).values, dtype=torch.float32)
+        amounts = torch.tensor(sub[col_cfg["base_value"]].fillna(0).values, dtype=torch.float32)
 
         # --- Step 5: train/val/test masks aligned to this edge subset ---
         train_m = torch.tensor(train_mask.loc[sub.index].values, dtype=torch.bool)
@@ -123,6 +125,7 @@ def build_all_edges(
             edge_index = edge_index,
             edge_attr  = edge_attr,
             y          = y,
+            amounts    = amounts,
             train_mask = train_m,
             val_mask   = val_m,
             test_mask  = test_m,

@@ -34,7 +34,7 @@ from src.utils.threshold_table import print_threshold_table
 
 @dataclass
 class TrainConfig:
-    task: str = "node"          # "node" or "edge"
+    task: str = "edge"          # "node" or "edge"
     graph_type: str = "hetero"  # "hetero" or "homo"
     epochs: int = 200
     lr: float = 1e-3
@@ -66,11 +66,13 @@ class Trainer:
                 self.train_mask = data.train_mask
                 self.val_mask = data.val_mask
                 self.test_mask = data.test_mask
+                self.amounts = None
             else:
                 self.y = data.edge_y
                 self.train_mask = data.edge_train_mask
                 self.val_mask = data.edge_val_mask
                 self.test_mask = data.edge_test_mask
+                self.amounts = getattr(data, "amounts", None)
         else:
             if cfg.task == "node":
                 nt = cfg.target_node_type
@@ -78,8 +80,9 @@ class Trainer:
                 self.train_mask = data[nt].train_mask
                 self.val_mask = data[nt].val_mask
                 self.test_mask = data[nt].test_mask
+                self.amounts = None
             else:
-                ys, trains, vals, tests = [], [], [], []
+                ys, trains, vals, tests, amounts = [], [], [], [], []
                 self.edge_type_slices = {}
                 offset = 0
                 for et in data.edge_types:
@@ -89,6 +92,8 @@ class Trainer:
                         trains.append(data[et].train_mask)
                         vals.append(data[et].val_mask)
                         tests.append(data[et].test_mask)
+                        if hasattr(data[et], "amounts") and data[et].amounts is not None:
+                            amounts.append(data[et].amounts)
                         self.edge_type_slices[et] = (offset, offset + n)
                         offset += n
 
@@ -96,6 +101,7 @@ class Trainer:
                 self.train_mask = torch.cat(trains)
                 self.val_mask = torch.cat(vals)
                 self.test_mask = torch.cat(tests)
+                self.amounts = torch.cat(amounts) if amounts else None
 
     def _compute_edge_logits_hetero(self, x_dict):
         """Score all labelled edges by concatenating src + dst embeddings + edge features."""
@@ -252,6 +258,7 @@ class Trainer:
         print(f"  Recall:    {metrics['recall']:.4f}")
         print(f"  Confusion matrix:\n{metrics['confusion_matrix']}")
 
-        print_threshold_table(test_labels, test_probs, model_name=self.config.graph_type)
+        amounts = self.amounts[self.test_mask].cpu().numpy() if self.amounts is not None else None
+        print_threshold_table(test_labels, test_probs, amounts=amounts, model_name=self.config.graph_type)
 
         return metrics

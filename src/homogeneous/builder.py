@@ -73,12 +73,13 @@ def project_to_homo(hetero_data) -> Data:
     x_homo = torch.cat(x_parts, dim=0)  # (N_total, max_dim + num_node_types)
 
     # ── Edge concatenation ────────────────────────────────────────────────────
-    ei_parts   = []
-    ea_parts   = []
-    y_parts    = []
-    train_parts = []
-    val_parts   = []
-    test_parts  = []
+    ei_parts     = []
+    ea_parts     = []
+    y_parts      = []
+    amount_parts = []
+    train_parts  = []
+    val_parts    = []
+    test_parts   = []
 
     for et in hetero_data.edge_types:
         src_type, _, dst_type = et
@@ -100,6 +101,9 @@ def project_to_homo(hetero_data) -> Data:
         train_parts.append(hetero_data[et].train_mask)
         val_parts.append(hetero_data[et].val_mask)
         test_parts.append(hetero_data[et].test_mask)
+        amt = getattr(hetero_data[et], "amounts", None)
+        if amt is not None:
+            amount_parts.append(amt)
 
     data = Data()
     data.x = x_homo
@@ -114,6 +118,8 @@ def project_to_homo(hetero_data) -> Data:
         data.edge_train_mask = torch.cat(train_parts, dim=0)
         data.edge_val_mask   = torch.cat(val_parts,   dim=0)
         data.edge_test_mask  = torch.cat(test_parts,  dim=0)
+        if amount_parts:
+            data.amounts = torch.cat(amount_parts, dim=0)
 
     _print_summary(data, node_offsets, hetero_data)
     return data
