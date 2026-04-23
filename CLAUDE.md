@@ -8,15 +8,18 @@ MSc thesis: **Heterogeneous Graph Neural Networks for Transaction-Level Fraud De
 
 Core research question: _Does preserving heterogeneous structure in a transaction graph improve fraud detection over simpler representations?_
 
-The experimental design is a three-level ladder. Each rung isolates one design decision:
+The experimental design compares two levels:
 
 | Mode | What runs | Models | Isolates |
 |------|-----------|--------|----------|
-| tab  | Tabular XGBoost | — | Floor: no graph at all |
-| homo | Homo GNN | GCN, GraphSAGE, GAT | Does any graph structure help? |
-| het  | Hetero GNN | HGT, HMPNN, HeteroGAT | Does heterogeneous structure specifically help? |
+| tab  | Tabular XGBoost | — | Production-style baseline: no graph |
+| het  | Hetero GNN | HGT, HMPNN, HeteroGAT | Does heterogeneous graph structure improve over tabular? |
 
-All GNN experiments use **edge classification** on the bank payment graph with `internal_account` and `external_account` node types. The ladder and current models are reflected in `run.py` and `src/`.
+Homogeneous GNNs and self-supervised pretraining (LaundroGraph, HGMAE) are covered in the literature review as related work but are **not part of the experimental evaluation**. The homo code path still exists in the repo but is not actively used.
+
+The het model list may grow — additional heterogeneous architectures from the financial fraud / AML literature are candidates for future inclusion.
+
+All GNN experiments use **edge classification** (transactions are edges) on the bank payment graph with `internal_account` and `external_account` node types. The ladder and current models are reflected in `run.py` and `src/`.
 
 ## Running things
 
@@ -24,8 +27,8 @@ All GNN experiments use **edge classification** on the bank payment graph with `
 
 ```
 python run.py --mode tab                          # tabular baseline
-python run.py --mode homo --model sage            # homo GNN
 python run.py --mode het --model hgt              # hetero GNN
+python run.py --mode het --model hmpnn            # hetero GNN (HMPNN)
 python run.py --mode het --model hgt --sample 0.05
 ```
 
@@ -64,8 +67,11 @@ Note: branch, sender bank, counterparty bank, and account format are **node feat
   - `edge_features.py` — builds per-transaction edge feature vectors
   - `edge_builder.py` — builds edge index tensors and attaches features/labels/masks
   - `assembler.py` — orchestrates the above, assembles PyG `HeteroData`, caches to disk
+- `src/heterogeneous/` — het model implementations (`hgt/`, `hmpnn/`, `hetero_gat/`)
 - `src/training/trainer.py` — unified training loop for all GNN models
 - `src/utils/results.py` — saves metrics.json and report.md per run
+
+**Removed / inactive:** `src/self_supervised/` (LaundroGraph) and `src/heterogeneous/hgmae/` are not part of the experimental scope. `src/homogeneous/` exists but is not actively used.
 
 ## Conventions
 

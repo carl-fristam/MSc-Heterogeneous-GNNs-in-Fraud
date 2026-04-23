@@ -5,15 +5,14 @@
 # Each variant only specifies what differs: graph topology (nodes + edges).
 #
 # Experiment ladder:
-#   L0  Tabular XGBoost — no graph
-#   L1  Homogeneous GNN — graph projected to single node/edge type
-#   L2  Heterogeneous GNN — full typed graph
+#   tab   Tabular XGBoost — no graph
+#   homo  Homogeneous GNN — graph projected to single node/edge type
+#   het   Heterogeneous GNN — full typed graph
 #
 # Usage:
-#   python run.py --level 0                              # tabular baseline
-#   python run.py --level 1 --model sage --variant v1   # homo GNN
-#   python run.py --level 2 --model hgt  --variant v1   # hetero GNN
-#   python run.py --level 2 --model hgt  --variant v2   # finer edge typing
+#   python run.py --mode tab
+#   python run.py --mode homo --model sage
+#   python run.py --mode het  --model hgt
 # ==============================================================================
 
 
@@ -24,8 +23,8 @@ sample_ratio: 1.0   # 0.01 for dev
 
 split:
   method: temporal
-  train_end: "2025-07-01"
-  val_end:   "2025-12-31"
+  train_end: "2025-09-01"
+  val_end:   "2026-01-01"
 
 cache:
   enabled: true

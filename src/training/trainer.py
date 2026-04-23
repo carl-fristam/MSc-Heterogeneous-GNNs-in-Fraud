@@ -259,6 +259,8 @@ class Trainer:
         print(f"  Confusion matrix:\n{metrics['confusion_matrix']}")
 
         amounts = self.amounts[self.test_mask].cpu().numpy() if self.amounts is not None else None
-        print_threshold_table(test_labels, test_probs, amounts=amounts, model_name=self.config.graph_type)
+        metrics["threshold_table"] = print_threshold_table(
+            test_labels, test_probs, amounts=amounts, model_name=self.config.graph_type
+        )
 
         return metrics

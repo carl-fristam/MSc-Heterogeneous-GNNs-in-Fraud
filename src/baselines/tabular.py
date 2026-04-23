@@ -153,7 +153,9 @@ def run_xgboost(prep: PreparedData) -> dict:
 
     base_val_col = prep.col_cfg.get("base_value")
     amounts = prep.df[base_val_col].values[test_m] if base_val_col else None
-    print_threshold_table(y[test_m], y_prob, amounts=amounts, model_name="XGBoost")
+    metrics["threshold_table"] = print_threshold_table(
+        y[test_m], y_prob, amounts=amounts, model_name="XGBoost"
+    )
 
     return metrics
 
@@ -237,8 +239,10 @@ def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50) -> dict:
     metrics = _evaluate(y[test_m], y_prob, y_pred, "XGBoost (Bayesian tuned)")
     base_val_col = prep.col_cfg.get("base_value")
     amounts = prep.df[base_val_col].values[test_m] if base_val_col else None
-    print_threshold_table(y[test_m], y_prob, amounts=amounts,
-                          model_name="XGBoost (Bayesian tuned)")
+    metrics["threshold_table"] = print_threshold_table(
+        y[test_m], y_prob, amounts=amounts,
+        model_name="XGBoost (Bayesian tuned)"
+    )
     return metrics
 
 
