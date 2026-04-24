@@ -260,7 +260,68 @@ class Trainer:
 
         amounts = self.amounts[self.test_mask].cpu().numpy() if self.amounts is not None else None
         metrics["threshold_table"] = print_threshold_table(
-            test_labels, test_probs, amounts=amounts, model_name=self.config.graph_type
+            test_labels, test_probs, amounts=amounts, model_name=self.config.graph_type,
+            optimal_threshold=best_t,
         )
+        metrics["_y_true"] = test_labels
+        metrics["_y_prob"] = test_probs
+
+        # ── Analysis data ────────────────────────────────────────────────────
+        if self.config.graph_type == "hetero" and self.config.task == "edge":
+            analysis = {}
+
+            # Node embeddings for t-SNE/UMAP
+            with torch.no_grad():
+                x_dict = self.model(self.data)
+            analysis["embeddings"] = {nt: x.cpu().numpy() for nt, x in x_dict.items()}
+
+            # Per-edge-type test metrics
+            et_metrics = {}
+            for et, (start, end) in self.edge_type_slices.items():
+                et_test = self.test_mask[start:end].cpu().numpy()
+                et_labels = self.y[start:end].cpu().numpy()[et_test]
+                et_probs = torch.sigmoid(self._forward()).cpu().numpy()[start:end][et_test] if False else None
+                # Reuse already computed test_probs via slicing
+                # test_mask is concatenated across edge types in same order
+            # Recompute from full arrays using slices
+            with torch.no_grad():
+                full_probs = torch.sigmoid(self._forward()).cpu().numpy()
+            for et, (start, end) in self.edge_type_slices.items():
+                mask_slice = self.test_mask[start:end].cpu().numpy().astype(bool)
+                labels_slice = self.y[start:end].cpu().numpy()[mask_slice]
+                probs_slice = full_probs[start:end][mask_slice]
+                if labels_slice.sum() > 0:
+                    et_metrics[str(et)] = {
+                        "auprc": float(average_precision_score(labels_slice, probs_slice)),
+                        "auroc": float(roc_auc_score(labels_slice, probs_slice)),
+                        "n_test": int(mask_slice.sum()),
+                        "n_fraud": int(labels_slice.sum()),
+                    }
+            analysis["per_edge_type"] = et_metrics
+
+            # Neighbourhood fraud density (training edges only)
+            train_fraud_counts = {}
+            for et, (start, end) in self.edge_type_slices.items():
+                src_type = et[0]
+                edge_index = self.data[et].edge_index.cpu()
+                train_mask_et = self.train_mask[start:end].cpu().numpy().astype(bool)
+                labels_et = self.y[start:end].cpu().numpy()
+                senders = edge_index[0][train_mask_et].numpy()
+                fraud_labels = labels_et[train_mask_et]
+                for s, f in zip(senders, fraud_labels):
+                    key = (src_type, int(s))
+                    if key not in train_fraud_counts:
+                        train_fraud_counts[key] = {"total": 0, "fraud": 0}
+                    train_fraud_counts[key]["total"] += 1
+                    train_fraud_counts[key]["fraud"] += int(f)
+            analysis["train_fraud_counts"] = train_fraud_counts
+
+            # Model-specific: HGT attention, HMPNN message norms
+            if hasattr(self.model, "extract_attention"):
+                analysis["attention_weights"] = self.model.extract_attention(self.data)
+            if hasattr(self.model, "extract_message_norms"):
+                analysis["message_norms"] = self.model.extract_message_norms(self.data)
+
+            metrics["_analysis"] = analysis
 
         return metrics

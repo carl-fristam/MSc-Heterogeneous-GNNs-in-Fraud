@@ -183,9 +183,17 @@ def main():
     save_kwargs = {"model": args.model if args.mode != "tab" else None}
     if isinstance(results, list):
         for r in results:
-            if r: save_results(r, args.mode, **save_kwargs)
+            if r: _save(r, args.mode, **save_kwargs)
     elif results:
-        save_results(results, args.mode, **save_kwargs)
+        _save(results, args.mode, **save_kwargs)
+
+
+def _save(metrics: dict, mode: str, **kwargs):
+    extra = {}
+    for key in ("_y_true", "_y_prob", "_xgb_model", "_feature_names", "_analysis"):
+        if key in metrics:
+            extra[key.lstrip("_")] = metrics.pop(key)
+    save_results(metrics, mode, **extra, **kwargs)
 
 
 if __name__ == "__main__":

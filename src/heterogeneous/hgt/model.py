@@ -84,6 +84,27 @@ class HGT(nn.Module):
         if self.task == "node":
             return self.classifier(x_dict[self.target_node_type]).squeeze(-1)
         else:
-            # Return node embeddings — edge scoring done in training loop
-            # because we need to iterate over edge types
             return x_dict
+
+    @torch.no_grad()
+    def extract_attention(self, data):
+        """Run forward pass with hooks to capture HGTConv attention weights."""
+        self.eval()
+        attn_weights = {}
+
+        def make_hook(layer_idx):
+            def hook_fn(module, inputs, outputs):
+                if hasattr(module, '_alpha') and module._alpha is not None:
+                    attn_weights[layer_idx] = module._alpha.detach().cpu()
+            return hook_fn
+
+        hooks = []
+        for i, conv in enumerate(self.convs):
+            hooks.append(conv.register_forward_hook(make_hook(i)))
+
+        self.forward(data)
+
+        for h in hooks:
+            h.remove()
+
+        return attn_weights

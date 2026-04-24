@@ -159,6 +159,12 @@ class HMPNNLayer(nn.Module):
         return out
 
 
+class HMPNNLayerAnalysis:
+    """Captured message norms from a single HMPNNLayer forward pass."""
+    def __init__(self):
+        self.norms = {}
+
+
 class HMPNN(nn.Module):
     """
     Full HMPNN: stacked HMPNNLayer instances + edge classification head.
@@ -238,4 +244,33 @@ class HMPNN(nn.Module):
         if self.task == "node":
             return self.classifier(x_dict[self.target_node_type]).squeeze(-1)
         else:
-            return x_dict  # Trainer scores edges via self.classifier
+            return x_dict
+
+    @torch.no_grad()
+    def extract_message_norms(self, data):
+        """Run forward and capture L2 norm of messages per relation per layer."""
+        self.eval()
+        x_dict = {nt: data[nt].x for nt in self.node_types}
+        edge_index_dict = data.edge_index_dict
+        edge_attr_dict = self._edge_attr_dict(data)
+
+        layer_norms = {}
+        for layer_idx, layer in enumerate(self.mp_layers):
+            if layer.aggr == "ct":
+                norms = {}
+                for src_type, rel, dst_type, key in [
+                    r for rels in layer.incoming.values() for r in rels
+                ]:
+                    et = (src_type, rel, dst_type)
+                    msg = layer.convs[key](
+                        (x_dict[src_type], x_dict[dst_type]),
+                        edge_index_dict[et],
+                        edge_attr_dict[et],
+                    )
+                    norms[et] = msg.norm(dim=1).cpu().numpy()
+                layer_norms[layer_idx] = norms
+
+            x_dict = layer(x_dict, edge_index_dict, edge_attr_dict)
+            x_dict = {nt: self.dropout(x) for nt, x in x_dict.items()}
+
+        return layer_norms

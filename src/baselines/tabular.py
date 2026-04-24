@@ -27,10 +27,10 @@ from src.data.prepare import PreparedData
 from src.utils.threshold_table import print_threshold_table
 
 
-def _tabular_X(prep: PreparedData) -> np.ndarray:
+def _tabular_X(prep: PreparedData) -> tuple[np.ndarray, list[str]]:
     """
     All numeric columns from the raw dataframe, minus identifiers/label/timestamp.
-    This is the full feature set XGBoost trains on — parquet → DataFrame → XGBoost.
+    Returns (feature_matrix, feature_names).
     """
     col_cfg = prep.col_cfg
     exclude = {
@@ -47,7 +47,7 @@ def _tabular_X(prep: PreparedData) -> np.ndarray:
     exclude.discard(None)
     num_cols = [c for c in prep.df.columns
                 if c not in exclude and pd.api.types.is_numeric_dtype(prep.df[c])]
-    return prep.df[num_cols].fillna(0).values.astype(np.float32)
+    return prep.df[num_cols].fillna(0).values.astype(np.float32), num_cols
 
 # Hyperparameter search space for Bayesian optimisation
 _XGB_SEARCH_SPACE = {
@@ -90,7 +90,7 @@ def _evaluate(y_true, y_prob, y_pred, name: str) -> dict:
 
 def run_logistic_regression(prep: PreparedData) -> dict:
     """Train and evaluate logistic regression on transaction features."""
-    X, y = _tabular_X(prep), prep.labels
+    (X, _), y = _tabular_X(prep), prep.labels
     train_m, test_m = prep.train_mask.values, prep.test_mask.values
 
     model = LogisticRegression(
@@ -115,7 +115,7 @@ def run_xgboost(prep: PreparedData) -> dict:
         print("xgboost not installed. Run: pip install xgboost")
         return {}
 
-    X, y = _tabular_X(prep), prep.labels
+    (X, feat_names), y = _tabular_X(prep), prep.labels
     train_m = prep.train_mask.values
     val_m = prep.val_mask.values
     test_m = prep.test_mask.values
@@ -154,8 +154,13 @@ def run_xgboost(prep: PreparedData) -> dict:
     base_val_col = prep.col_cfg.get("base_value")
     amounts = prep.df[base_val_col].values[test_m] if base_val_col else None
     metrics["threshold_table"] = print_threshold_table(
-        y[test_m], y_prob, amounts=amounts, model_name="XGBoost"
+        y[test_m], y_prob, amounts=amounts, model_name="XGBoost",
+        optimal_threshold=best_t,
     )
+    metrics["_y_true"] = y[test_m]
+    metrics["_y_prob"] = y_prob
+    metrics["_xgb_model"] = model
+    metrics["_feature_names"] = feat_names
 
     return metrics
 
@@ -174,7 +179,7 @@ def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50) -> dict:
         print(f"Missing dependency: {e}. Run: pip install optuna xgboost")
         return {}
 
-    X, y   = _tabular_X(prep), prep.labels
+    (X, feat_names), y = _tabular_X(prep), prep.labels
     train_m = prep.train_mask.values
     val_m   = prep.val_mask.values
     test_m  = prep.test_mask.values
@@ -241,8 +246,14 @@ def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50) -> dict:
     amounts = prep.df[base_val_col].values[test_m] if base_val_col else None
     metrics["threshold_table"] = print_threshold_table(
         y[test_m], y_prob, amounts=amounts,
-        model_name="XGBoost (Bayesian tuned)"
+        model_name="XGBoost (Bayesian tuned)",
+        optimal_threshold=best_t,
     )
+    metrics["_y_true"] = y[test_m]
+    metrics["_y_prob"] = y_prob
+    metrics["_xgb_model"] = final_model
+    metrics["_feature_names"] = feat_names
+
     return metrics
 
 
