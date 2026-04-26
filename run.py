@@ -4,14 +4,16 @@ Main experiment runner.
 Experiment ladder:
 
   tab   — Tabular baseline (XGBoost, no graph)
-  homo  — Homogeneous GNN  (gcn | sage | gat)
   het   — Heterogeneous GNN (hgt | hmpnn | hetero_gat)
+
+Data arrives as pre-split parquet/csv files (train, val, test).
+No feature engineering or splitting is done in this repo.
 
 Usage:
     python run.py --mode tab
-    python run.py --mode homo --model sage
     python run.py --mode het --model hgt
-    python run.py --mode het --model hgt --sample 0.05
+    python run.py --mode het --model hmpnn --sample 0.5
+    python run.py --mode het --model hgt --full-features
 """
 
 import argparse
@@ -25,35 +27,6 @@ from src.data.prepare import prepare_data
 def run_tab(prep, tune: bool = False, n_trials: int = 50):
     from src.baselines.tabular import run_tabular_baselines
     return run_tabular_baselines(prep, tune=tune, n_trials=n_trials)
-
-
-def run_homo(prep, config, model_name="sage", **kwargs):
-    from src.graph_builder.assembler import build_graph
-    from src.homogeneous.builder import project_to_homo
-    from src.homogeneous.models import HomoGNN
-    from src.training.trainer import Trainer, TrainConfig
-
-    device = get_device()
-    data   = project_to_homo(build_graph(config, prep)["data"]).to(device)
-
-    model = HomoGNN(
-        data,
-        conv_type  = model_name,
-        hidden_dim = kwargs.get("hidden_dim", 64),
-        num_layers = kwargs.get("num_layers", 2),
-        num_heads  = kwargs.get("num_heads",  4),
-        dropout    = kwargs.get("dropout",    0.3),
-    )
-
-    trainer = Trainer(model, data, TrainConfig(
-        task        = "edge",
-        graph_type  = "homo",
-        epochs      = kwargs.get("epochs",   200),
-        lr          = kwargs.get("lr",       1e-3),
-        patience    = kwargs.get("patience", 15),
-    ), device)
-
-    return trainer.run()
 
 
 def run_het(prep, config, model_name="hgt", **kwargs):
@@ -118,13 +91,16 @@ def run_het(prep, config, model_name="hgt", **kwargs):
 def main():
     parser = argparse.ArgumentParser(description="Run fraud detection experiments")
     parser.add_argument("--mode",   type=str,
-                        choices=["tab", "homo", "het"], required=True,
-                        help="tab | homo | het")
+                        choices=["tab", "het"], required=True,
+                        help="tab | het")
     parser.add_argument("--model",  type=str, default="hgt",
-                        choices=["gcn", "sage", "gat", "hgt", "hmpnn", "hetero_gat"])
+                        choices=["hgt", "hmpnn", "hetero_gat"])
+
+    # Data
     parser.add_argument("--sample", type=float, default=None,
-                        help="Fraction of data to use (e.g. 0.05 for dev runs)")
-    parser.add_argument("--data-path", type=str, default=None)
+                        help="Stratified temporal sample fraction (e.g. 0.5)")
+    parser.add_argument("--full-features", action="store_true",
+                        help="Use all 91 edge features instead of lean 30 (GNN only)")
 
     # Tabular tuning
     parser.add_argument("--tune",     action="store_true")
@@ -141,28 +117,14 @@ def main():
     args   = parser.parse_args()
     config = load_variant("v1")
 
-    # ── Dataset selection ─────────────────────────────────────────────────────
-    datasets_dir = PROJECT_ROOT / "datasets"
-    if args.data_path is not None:
-        config["data_path"] = args.data_path
+    # Select edge feature set for GNNs
+    if args.full_features:
+        config["edge_features"] = config["edge_features_full"]
+        print(f"\nEdge features: FULL ({len(config['edge_features'])} dims)")
     else:
-        print("\nAvailable datasets:")
-        files = sorted(datasets_dir.glob("*.parquet"))
-        if not files:
-            print("  No .parquet files found in datasets/")
-            raise SystemExit(1)
-        for i, f in enumerate(files, 1):
-            print(f"  {i}. {f.name}")
-        choice = input("\nSelect dataset (number or filename): ").strip()
-        if choice.isdigit() and 1 <= int(choice) <= len(files):
-            config["data_path"] = str(files[int(choice) - 1])
-        else:
-            config["data_path"] = str(datasets_dir / choice)
+        print(f"\nEdge features: LEAN ({len(config['edge_features'])} dims)")
 
-    if args.sample is not None:
-        config["sample_ratio"] = args.sample
-
-    prep = prepare_data(config)
+    prep = prepare_data(config, sample=args.sample)
 
     model_kwargs = {
         "hidden_dim": args.hidden_dim,
@@ -175,8 +137,6 @@ def main():
 
     if args.mode == "tab":
         results = run_tab(prep, tune=args.tune, n_trials=args.n_trials)
-    elif args.mode == "homo":
-        results = run_homo(prep, config, model_name=args.model, **model_kwargs)
     elif args.mode == "het":
         results = run_het(prep, config, model_name=args.model, **model_kwargs)
 

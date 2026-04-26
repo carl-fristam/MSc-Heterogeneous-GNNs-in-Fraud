@@ -28,8 +28,9 @@ def main():
 
     p = prepare_data(load_variant(args.variant))
     df = p.df
-    fraud = df[df["CONFIRMEDRISK"] == True]
-    clean = df[df["CONFIRMEDRISK"] == False]
+    label_col = p.col_cfg["label"]
+    fraud = df[df[label_col] == True]
+    clean = df[df[label_col] == False]
 
     print(f"\n{'='*60}")
     print("FRAUD NETWORK ANALYSIS")

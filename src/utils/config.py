@@ -38,30 +38,17 @@ def load_variant(variant: str) -> dict:
 
     vdef = master["variants"][variant]
 
-    # Build the config the pipeline expects
     config = {
         "variant": variant,
-        "data_path": master["data_path"],
-        "sample_ratio": master["sample_ratio"],
-        "truncate_after": master.get("truncate_after"),
         "split": deepcopy(master["split"]),
         "cache": deepcopy(master["cache"]),
         "columns": deepcopy(master["columns"]),
+        "edge_features": deepcopy(master["edge_features_lean"]),
+        "edge_features_full": deepcopy(master["edge_features_full"]),
+        "node_features": deepcopy(master["node_features"]),
     }
 
-    # Nodes: pick from shared node_features based on variant's node list
-    config["nodes"] = {}
-    for node_type in vdef["nodes"]:
-        if node_type == "transaction":
-            config["nodes"]["transaction"] = {
-                "features": vdef.get("transaction_features", master["edge_features"]),
-            }
-        elif node_type in master["node_features"]:
-            config["nodes"][node_type] = deepcopy(master["node_features"][node_type])
-
-    # Edges
     config["edges"] = {
-        "features": deepcopy(master["edge_features"]),
         "relations": deepcopy(vdef["edges"]),
     }
 

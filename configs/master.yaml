@@ -4,27 +4,20 @@
 # Shared settings (data, columns, split, features) are defined once at the top.
 # Each variant only specifies what differs: graph topology (nodes + edges).
 #
-# Experiment ladder:
-#   tab   Tabular XGBoost — no graph
-#   homo  Homogeneous GNN — graph projected to single node/edge type
-#   het   Heterogeneous GNN — full typed graph
+# All feature engineering, encoding, and scaling is done externally.
+# This repo only does graph construction and model training.
 #
 # Usage:
 #   python run.py --mode tab
-#   python run.py --mode homo --model sage
-#   python run.py --mode het  --model hgt
+#   python run.py --mode het --model hgt
 # ==============================================================================
 
 
 # ── Data ─────────────────────────────────────────────────────────────────────
 
-data_path: datasets/TRANSACTIONS_almost_clean.parquet
-sample_ratio: 1.0   # 0.01 for dev
-
 split:
-  method: temporal
-  train_end: "2025-09-01"
-  val_end:   "2026-01-01"
+  method: external
+  dir: datasets/splits/          # expects train.parquet, val.parquet, test.parquet
 
 cache:
   enabled: true
@@ -34,145 +27,186 @@ cache:
 # ── Columns ──────────────────────────────────────────────────────────────────
 
 columns:
-  sender:        ACCOUNTID
-  receiver:      COUNTERPARTYID
-  timestamp:     EVENTTIME
-  label:         CONFIRMEDRISK
-  onus_flag:     TRANSACTIONONUS
-  base_value:    BASEVALUE
-  intl_flag:     INTERNATIONALFLAG
-  org_trans_id:  ORGTRANSID
-  sender_bank: ACCOUNTAGENTID  # sender's bank BIC (Danske Bank entity); used for sender_bank_diversity on external nodes
-
-  # Pre-OHE'd column groups (already encoded in dataset)
-  ohe_groups:
-    branch_tbe:
-      - ACCOUNTBRANCH_TBE_3055
-      - ACCOUNTBRANCH_TBE_3098
-      - ACCOUNTBRANCH_TBE_3161
-      - ACCOUNTBRANCH_TBE_32AG
-      - ACCOUNTBRANCH_TBE_32AN
-      - ACCOUNTBRANCH_TBE_32BH
-      - ACCOUNTBRANCH_TBE_3355
-      - ACCOUNTBRANCH_TBE_35AC
-      - ACCOUNTBRANCH_TBE_35AJ
-      - ACCOUNTBRANCH_TBE_35AL
-      - ACCOUNTBRANCH_TBE_36AK
-      - ACCOUNTBRANCH_TBE_36AQ
-      - ACCOUNTBRANCH_TBE_36AU
-      - ACCOUNTBRANCH_TBE_36AW
-      - ACCOUNTBRANCH_TBE_36CQ
-      - ACCOUNTBRANCH_TBE_36CR
-      - ACCOUNTBRANCH_TBE_36CS
-      - ACCOUNTBRANCH_TBE_36CT
-      - ACCOUNTBRANCH_TBE_36CU
-      - ACCOUNTBRANCH_TBE_41AA
-      - ACCOUNTBRANCH_TBE_rare
-    counter_agent:
-      - "COUNTERAGENT_TBE_           "
-      - "COUNTERAGENT_TBE_ABBYGB2L   "
-      - "COUNTERAGENT_TBE_DABADKKK   "
-      - "COUNTERAGENT_TBE_DABAFIHH   "
-      - "COUNTERAGENT_TBE_DABAGB2B   "
-      - "COUNTERAGENT_TBE_DABASESX   "
-      - "COUNTERAGENT_TBE_ESSESESS   "
-      - "COUNTERAGENT_TBE_HANDSESS   "
-      - "COUNTERAGENT_TBE_KLRNSESS   "
-      - "COUNTERAGENT_TBE_LUNADK22   "
-      - "COUNTERAGENT_TBE_MONZGB2L   "
-      - "COUNTERAGENT_TBE_NAIAGB21   "
-      - "COUNTERAGENT_TBE_NDEADKKK   "
-      - "COUNTERAGENT_TBE_NDEAFIHH   "
-      - "COUNTERAGENT_TBE_NDEASESS   "
-      - "COUNTERAGENT_TBE_OKOYFIHH   "
-      - "COUNTERAGENT_TBE_REVOGB21   "
-      - "COUNTERAGENT_TBE_SBANFIHH   "
-      - "COUNTERAGENT_TBE_SWEDSESS   "
-      - "COUNTERAGENT_TBE_ULSBGB2B   "
-      - COUNTERAGENT_TBE_rare
-    clearing:
-      - PAYMENTCLEARING_default
-      - PAYMENTCLEARING_express
-      - PAYMENTCLEARING_instant
-      - "PAYMENTCLEARING_other  "
-    submethod:
-      - PAYMENTSUBMETHOD_accountClosure
-      - PAYMENTSUBMETHOD_bankGiro
-      - PAYMENTSUBMETHOD_futurePayment
-      - PAYMENTSUBMETHOD_plusGiro
-      - PAYMENTSUBMETHOD_realTime
-    currency:
-      - CURRENCY_TBE_DKK
-      - CURRENCY_TBE_EUR
-      - CURRENCY_TBE_GBP
-      - CURRENCY_TBE_NOK
-      - CURRENCY_TBE_SEK
-      - CURRENCY_TBE_rare
-    channel:
-      - CHANNEL_atmPayment
-      - CHANNEL_branch
-      - CHANNEL_ebanking
-      - CHANNEL_mobileBank
-      - CHANNEL_openBanking
-      - CHANNEL_swish
-      - CHANNEL_webPayments
-    sender_bank:
-      - ACCOUNTAGENTID_DABADKKK
-      - ACCOUNTAGENTID_DABAFIHH
-      - ACCOUNTAGENTID_DABAGB2B
-      - ACCOUNTAGENTID_DABANO22
-      - ACCOUNTAGENTID_DABASESX
-    counter_id_format:
-      - COUNTERIDFORMAT_BBAN
-      - COUNTERIDFORMAT_IBAN
-    destination:
-      - DESTINATION_TBE_DK
-      - DESTINATION_TBE_FI
-      - DESTINATION_TBE_GB
-      - DESTINATION_TBE_NO
-      - DESTINATION_TBE_SE
-      - DESTINATION_TBE_rare
-
-  customer_id:   CUSTOMERID
+  sender:         ACCOUNTID
+  receiver:       COUNTERPARTYID
+  timestamp:      EVENTTIME
+  label:          CONFIRMEDRISK
+  onus_flag:      TRANSACTIONONUS
+  base_value:     BASEVALUE
+  transaction_id: TRANSACTIONID
+  customer_id:    CUSTOMERID
 
 
-# ── Transaction / edge features (shared across ALL variants) ─────────────────
+# ── Edge features (per-transaction, pre-computed) ────────────────────────────
+#
+# Two feature sets:
+#   lean (default) — 30 raw transaction properties for GNNs
+#                    MP replaces hand-engineered aggregations (Fey et al. 2023)
+#   full           — 91 features including velocity/novelty (--full-features)
+#                    use for ablation: does adding engineered features help GNNs?
+#
+# XGBoost always sees ALL numeric columns regardless of this setting.
 
-edge_features:
-  - log_base_value
-  - channel_ohe          # pre-encoded: CHANNEL_* columns
-  - submethod_ohe        # pre-encoded: PAYMENTSUBMETHOD_* columns
-  - clearing_ohe         # pre-encoded: PAYMENTCLEARING_* columns
-  - currency_ohe         # pre-encoded: CURRENCY_TBE_* columns
-  - destination_ohe      # pre-encoded: DESTINATION_TBE_* columns
-  - international_flag
-  - time_encoding
+edge_features_lean:
+  # amount
+  - log_basevalue
+  # transaction properties
+  - INTERNATIONALFLAG
+  - is_foreign_currency
+  # channel (drop-first OHE)
+  - CHANNEL_branch
+  - CHANNEL_ebanking
+  - CHANNEL_mobileBank
+  - CHANNEL_openBanking
+  - CHANNEL_swish
+  - CHANNEL_webPayments
+  # clearing type (drop-first OHE)
+  - PAYMENTCLEARING_express
+  - PAYMENTCLEARING_instant
+  - PAYMENTCLEARING_other
+  # payment submethod (drop-first OHE)
+  - PAYMENTSUBMETHOD_bankGiro
+  - PAYMENTSUBMETHOD_futurePayment
+  - PAYMENTSUBMETHOD_plusGiro
+  - PAYMENTSUBMETHOD_realTime
+  # currency (drop-first OHE)
+  - CURRENCY_EUR
+  - CURRENCY_GBP
+  - CURRENCY_NOK
+  - CURRENCY_RARE
+  - CURRENCY_SEK
+  # destination country (drop-first OHE)
+  - DESTINATIONCOUNTRY_FI
+  - DESTINATIONCOUNTRY_GB
+  - DESTINATIONCOUNTRY_NO
+  - DESTINATIONCOUNTRY_RARE
+  - DESTINATIONCOUNTRY_SE
+  # cyclical time encoding (pre-computed)
+  - hour_sin
+  - hour_cos
+  - dow_sin
+  - dow_cos
+
+edge_features_full:
+  # ── everything in lean ──
+  - log_basevalue
+  - INTERNATIONALFLAG
+  - is_foreign_currency
+  - CHANNEL_branch
+  - CHANNEL_ebanking
+  - CHANNEL_mobileBank
+  - CHANNEL_openBanking
+  - CHANNEL_swish
+  - CHANNEL_webPayments
+  - PAYMENTCLEARING_express
+  - PAYMENTCLEARING_instant
+  - PAYMENTCLEARING_other
+  - PAYMENTSUBMETHOD_bankGiro
+  - PAYMENTSUBMETHOD_futurePayment
+  - PAYMENTSUBMETHOD_plusGiro
+  - PAYMENTSUBMETHOD_realTime
+  - CURRENCY_EUR
+  - CURRENCY_GBP
+  - CURRENCY_NOK
+  - CURRENCY_RARE
+  - CURRENCY_SEK
+  - DESTINATIONCOUNTRY_FI
+  - DESTINATIONCOUNTRY_GB
+  - DESTINATIONCOUNTRY_NO
+  - DESTINATIONCOUNTRY_RARE
+  - DESTINATIONCOUNTRY_SE
+  - hour_sin
+  - hour_cos
+  - dow_sin
+  - dow_cos
+  # ── additional engineered features ──
+  - is_nighttime
+  - is_weekend
+  # temporal context
+  - time_since_prev_txn
+  - log_time_since_prev_txn
+  - is_first_txn_for_customer
+  - time_since_first_txn
+  # novelty flags
+  - is_new_destinationcountry_for_customer
+  - is_new_destinationc_for_customer
+  - is_new_counterparty_for_customer
+  - is_new_channel_for_customer
+  - is_new_paymentsubme_for_customer
+  - is_new_intl_dest_for_customer
+  # customer velocity — amount (1D / 7D / 30D)
+  - cust_amt_count_1D
+  - cust_amt_mean_1D
+  - cust_amt_std_1D
+  - cust_amt_max_1D
+  - cust_amt_sum_1D
+  - cust_amt_count_7D
+  - cust_amt_mean_7D
+  - cust_amt_std_7D
+  - cust_amt_max_7D
+  - cust_amt_sum_7D
+  - cust_amt_count_30D
+  - cust_amt_mean_30D
+  - cust_amt_std_30D
+  - cust_amt_max_30D
+  - cust_amt_sum_30D
+  # customer velocity — destination (1D / 7D / 30D)
+  - cust_destinatio_count_1D
+  - cust_destinatio_mean_1D
+  - cust_destinatio_sum_1D
+  - cust_destinatio_count_7D
+  - cust_destinatio_mean_7D
+  - cust_destinatio_sum_7D
+  - cust_destinatio_count_30D
+  - cust_destinatio_mean_30D
+  - cust_destinatio_sum_30D
+  # customer velocity — counterparty (1D / 7D / 30D)
+  - cust_counterpar_count_1D
+  - cust_counterpar_mean_1D
+  - cust_counterpar_sum_1D
+  - cust_counterpar_count_7D
+  - cust_counterpar_mean_7D
+  - cust_counterpar_sum_7D
+  - cust_counterpar_count_30D
+  - cust_counterpar_mean_30D
+  - cust_counterpar_sum_30D
+  # customer velocity — payment submethod (1D / 7D / 30D)
+  - cust_paymentsub_count_1D
+  - cust_paymentsub_mean_1D
+  - cust_paymentsub_sum_1D
+  - cust_paymentsub_count_7D
+  - cust_paymentsub_mean_7D
+  - cust_paymentsub_sum_7D
+  - cust_paymentsub_count_30D
+  - cust_paymentsub_mean_30D
+  - cust_paymentsub_sum_30D
+  # customer velocity — nighttime (7D / 30D)
+  - cust_night_share_7D
+  - cust_night_count_7D
+  - cust_night_share_30D
+  - cust_night_count_30D
+  # ratios
+  - txn_to_avg_ratio
+  - txn_to_median_ratio
+  # pair feature
+  - IS_SAFE_PAIR
 
 
-# ── Node feature sets (shared across ALL variants that use these node types) ─
+# ── Node features (per-account, pre-computed) ────────────────────────────────
 
 node_features:
   internal_account:
     id_col: ACCOUNTID
-    features:
-      - out_degree
-      - amount_stats
-      - counterparty_diversity
-      - channel_diversity
-      - time_behavior
-      - branch_tbe        # pre-encoded: ACCOUNTBRANCH_TBE_* columns — property of the sender account
-      - sender_bank       # pre-encoded: ACCOUNTAGENTID_* columns — which Danske Bank entity
+    columns:
+      - accountbranchid_te
+      - accagentcountry_te
 
   external_account:
-    id_col: COUNTERENTITYID
-    exclude_if_sender: true
-    features:
-      - in_degree
-      - received_amount_stats
-      - sender_diversity
-      - sender_bank_diversity
-      - counter_agent     # pre-encoded: COUNTERAGENT_TBE_* columns — which bank the counterparty is at
-      - counter_id_format # pre-encoded: COUNTERIDFORMAT_* columns — BBAN or IBAN
+    id_col: COUNTERPARTYID
+    columns:
+      - counteragentid_te
+      - counterpartyid_te
+      - COUNTERIDFORMAT_IBAN
 
 
 # ==============================================================================
@@ -194,4 +228,3 @@ variants:
         src:  internal_account
         dst:  external_account
         filter: "TRANSACTIONONUS == False"
-

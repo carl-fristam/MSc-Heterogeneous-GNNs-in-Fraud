@@ -26,7 +26,7 @@ def build_node_maps(df: pd.DataFrame, col_cfg: dict) -> dict:
     Assign every account in the dataset to a node type and give it an integer index.
 
     Args:
-        df:       the full transaction dataframe (output of loader.py)
+        df:       the full transaction dataframe (from PreparedData)
                   must have _sender and _receiver columns
         col_cfg:  the columns section from master.yaml
 

@@ -29,20 +29,19 @@ from src.utils.threshold_table import print_threshold_table
 
 def _tabular_X(prep: PreparedData) -> tuple[np.ndarray, list[str]]:
     """
-    All numeric columns from the raw dataframe, minus identifiers/label/timestamp.
+    All numeric columns from the dataframe, minus identifiers/label/timestamp.
     Returns (feature_matrix, feature_names).
     """
     col_cfg = prep.col_cfg
     exclude = {
         col_cfg.get("label"),
-        col_cfg.get("timestamp"),
         col_cfg.get("sender"),
         col_cfg.get("receiver"),
-        col_cfg.get("org_trans_id"),
+        col_cfg.get("timestamp"),
+        col_cfg.get("transaction_id"),
         col_cfg.get("customer_id"),
-        col_cfg.get("sender_bank"),
-        "COUNTERENTITYID",
-        "_datetime", "_sender", "_receiver",
+        "COUNTERBRANCHID",
+        "_sender", "_receiver",
     }
     exclude.discard(None)
     num_cols = [c for c in prep.df.columns

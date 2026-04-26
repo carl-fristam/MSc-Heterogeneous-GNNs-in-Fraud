@@ -5,11 +5,10 @@ Orchestrates the full graph build and caches the result.
 
 Steps:
     1. Build node ID mappings
-    2. Compute node features (training data only)
-    3. Fit edge normalization stats (training data only)
-    4. Build edges (index + features + labels + masks) per edge type
-    5. Assemble into a PyG HeteroData object
-    6. Cache to disk so we don't rebuild every run
+    2. Select node features (pre-computed, training data only)
+    3. Build edges (index + features + labels + masks) per edge type
+    4. Assemble into a PyG HeteroData object
+    5. Cache to disk so we don't rebuild every run
 
 The cache is keyed by a hash of the config so any change to features,
 filters, or split dates automatically triggers a rebuild.
@@ -27,7 +26,6 @@ from torch_geometric.data import HeteroData
 from src.utils.config import PROJECT_ROOT
 from src.graph_builder.node_builder  import build_node_maps
 from src.graph_builder.node_features import build_internal_node_features, build_external_node_features
-from src.graph_builder.edge_features import fit_edge_stats
 from src.graph_builder.edge_builder  import build_all_edges
 
 
@@ -60,35 +58,40 @@ def build_graph(config: dict, prep) -> dict:
     test_mask  = prep.test_mask
     col_cfg    = config["columns"]
 
+    edge_feat_cols     = config["edge_features"]
+    internal_feat_cols = config["node_features"]["internal_account"]["columns"]
+    external_feat_cols = config["node_features"]["external_account"]["columns"]
+
     # --- Step 1: node ID mappings ---
-    print("\n[1/4] Building node maps...")
+    print("\n[1/3] Building node maps...")
     node_maps = build_node_maps(df, col_cfg)
 
     # --- Step 2: node features ---
-    print("\n[2/4] Computing node features...")
-    internal_features = build_internal_node_features(df, col_cfg, node_maps["internal_account"], train_mask)
-    external_features = build_external_node_features(df, col_cfg, node_maps["external_account"], train_mask)
+    print("\n[2/3] Computing node features...")
+    internal_features = build_internal_node_features(
+        df, node_maps["internal_account"], train_mask, internal_feat_cols,
+    )
+    external_features = build_external_node_features(
+        df, col_cfg, node_maps["external_account"], train_mask, external_feat_cols,
+    )
 
-    # --- Step 3: fit edge normalization stats on training data ---
-    print("\n[3/4] Building edges...")
-    stats = fit_edge_stats(df, col_cfg, train_mask)
-
-    # edge definitions come from config["edges"]["relations"] (flattened by load_variant)
+    # --- Step 3: build edges ---
+    print("\n[3/3] Building edges...")
     edge_defs = config["edges"]["relations"]
 
     bundles = build_all_edges(
-        df         = df,
-        node_maps  = node_maps,
-        edge_defs  = edge_defs,
-        col_cfg    = col_cfg,
-        stats      = stats,
-        train_mask = train_mask,
-        val_mask   = val_mask,
-        test_mask  = test_mask,
+        df              = df,
+        node_maps       = node_maps,
+        edge_defs       = edge_defs,
+        col_cfg         = col_cfg,
+        edge_feat_cols  = edge_feat_cols,
+        train_mask      = train_mask,
+        val_mask        = val_mask,
+        test_mask       = test_mask,
     )
 
-    # --- Step 4: assemble into HeteroData ---
-    print("\n[4/4] Assembling HeteroData object...")
+    # --- Assemble into HeteroData ---
+    print("\nAssembling HeteroData object...")
     data = HeteroData()
 
     data["internal_account"].x         = internal_features
@@ -122,19 +125,16 @@ def build_graph(config: dict, prep) -> dict:
 def _cache_path(config: dict) -> str:
     cache_dir = config.get("cache", {}).get("dir", "data/processed/bank")
     variant   = config.get("variant", "unknown")
-    sr        = config.get("sample_ratio", 1.0)
 
-    # hash covers everything that would change the graph output
     sig = json.dumps({
         "variant":        variant,
         "edges":          config["edges"]["relations"],
-        "edge_features":  config["edges"]["features"],
-        "truncate_after": config.get("truncate_after"),
-        "split":          config["split"],
+        "edge_features":  config["edge_features"],
+        "node_features":  config["node_features"],
     }, sort_keys=True)
 
     h = hashlib.md5(sig.encode()).hexdigest()[:8]
-    return str(PROJECT_ROOT / cache_dir / f"graph_{variant}_sr{sr:.2f}_{h}.pkl")
+    return str(PROJECT_ROOT / cache_dir / f"graph_{variant}_{h}.pkl")
 
 
 def _load_cache(path: str):

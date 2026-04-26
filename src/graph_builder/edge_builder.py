@@ -33,24 +33,24 @@ class EdgeBundle:
 
 
 def build_all_edges(
-    df:         pd.DataFrame,
-    node_maps:  dict,
-    edge_defs:  list,
-    col_cfg:    dict,
-    stats:      dict,
-    train_mask: pd.Series,
-    val_mask:   pd.Series,
-    test_mask:  pd.Series,
+    df:             pd.DataFrame,
+    node_maps:      dict,
+    edge_defs:      list,
+    col_cfg:        dict,
+    edge_feat_cols: list,
+    train_mask:     pd.Series,
+    val_mask:       pd.Series,
+    test_mask:      pd.Series,
 ) -> list[EdgeBundle]:
     """
     Build all edge bundles for a given graph variant.
 
     Args:
-        df:        full transaction dataframe
-        node_maps: output of build_node_maps — {node_type: {acc_id: int_index}}
-        edge_defs: list of edge definitions from config["variants"][v]["edges"]
-        col_cfg:   columns section from master.yaml
-        stats:     output of fit_edge_stats — normalization constants for amount
+        df:              full transaction dataframe
+        node_maps:       output of build_node_maps — {node_type: {acc_id: int_index}}
+        edge_defs:       list of edge definitions from config["variants"][v]["edges"]
+        col_cfg:         columns section from master.yaml
+        edge_feat_cols:  list of pre-computed edge feature column names
         train/val/test_mask: boolean pd.Series aligned with df index
 
     Returns:
@@ -86,8 +86,6 @@ def build_all_edges(
         src_idx = sub["_sender"].map(src_map)
         dst_idx = sub["_receiver"].map(dst_map)
 
-        # drop any rows where the account ID wasn't in the node map
-        # (should be rare, but can happen at boundaries)
         valid   = src_idx.notna() & dst_idx.notna()
         if not valid.all():
             print(f"    dropped {(~valid).sum():,} rows with unmapped IDs")
@@ -99,11 +97,10 @@ def build_all_edges(
         dst_idx = dst_idx.astype(np.int64).values
 
         # --- Step 3: build edge_index tensor ---
-        # PyG expects shape (2, num_edges) where row 0 = sources, row 1 = destinations
         edge_index = torch.tensor(np.stack([src_idx, dst_idx]), dtype=torch.long)
 
         # --- Step 4: edge features and labels ---
-        feat_arr  = build_edge_features(sub, col_cfg, stats)
+        feat_arr  = build_edge_features(sub, edge_feat_cols)
         edge_attr = torch.tensor(feat_arr, dtype=torch.float32)
 
         y       = torch.tensor(sub[label_col].fillna(0).values, dtype=torch.float32)
@@ -114,7 +111,6 @@ def build_all_edges(
         val_m   = torch.tensor(val_mask.loc[sub.index].values,   dtype=torch.bool)
         test_m  = torch.tensor(test_mask.loc[sub.index].values,  dtype=torch.bool)
 
-        # print a quick sanity check on fraud rate per split
         for split_name, mask in [("train", train_m), ("val", val_m), ("test", test_m)]:
             n   = mask.sum().item()
             pos = y[mask].sum().item() if n > 0 else 0
