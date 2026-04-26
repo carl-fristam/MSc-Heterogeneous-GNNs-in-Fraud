@@ -222,6 +222,7 @@ class HMPNN(nn.Module):
             self.classifier = nn.Sequential(
                 nn.Linear(hidden_dim * 2 + edge_feat_dim, hidden_dim),
                 nn.ReLU(),
+                nn.Dropout(dropout),
                 nn.Linear(hidden_dim, 1),
             )
 

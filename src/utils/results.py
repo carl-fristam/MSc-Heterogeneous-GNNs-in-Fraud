@@ -27,9 +27,13 @@ from src.utils.config import PROJECT_ROOT
 def save_results(metrics: dict, mode: str, model: str = None,
                  y_true=None, y_prob=None,
                  xgb_model=None, feature_names=None,
-                 analysis=None, **kwargs):
+                 analysis=None, results_dir_override=None, **kwargs):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir   = _results_dir(mode, model=model) / f"{_run_name(model)}_{timestamp}"
+    if results_dir_override:
+        base = PROJECT_ROOT / results_dir_override / (model or mode)
+    else:
+        base = _results_dir(mode, model=model)
+    run_dir = base / f"{_run_name(model)}_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     display_name = model.upper() if model else "XGBoost"

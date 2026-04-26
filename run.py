@@ -114,6 +114,10 @@ def main():
     parser.add_argument("--lr",          type=float, default=1e-3)
     parser.add_argument("--patience",    type=int,   default=15)
 
+    # Output
+    parser.add_argument("--results-dir", type=str, default=None,
+                        help="Override results directory (e.g. results/tuning)")
+
     args   = parser.parse_args()
     config = load_variant("v1")
 
@@ -141,6 +145,12 @@ def main():
         results = run_het(prep, config, model_name=args.model, **model_kwargs)
 
     save_kwargs = {"model": args.model if args.mode != "tab" else None}
+    if args.results_dir:
+        save_kwargs["results_dir_override"] = args.results_dir
+    if args.mode == "het":
+        save_kwargs["hyperparams"] = model_kwargs
+        save_kwargs["sample"] = args.sample
+        save_kwargs["full_features"] = args.full_features
     if isinstance(results, list):
         for r in results:
             if r: _save(r, args.mode, **save_kwargs)
