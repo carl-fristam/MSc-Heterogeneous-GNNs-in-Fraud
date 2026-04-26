@@ -27,7 +27,8 @@ from src.utils.config import PROJECT_ROOT
 def save_results(metrics: dict, mode: str, model: str = None,
                  y_true=None, y_prob=None,
                  xgb_model=None, feature_names=None,
-                 analysis=None, results_dir_override=None, **kwargs):
+                 analysis=None, results_dir_override=None,
+                 console_log=None, **kwargs):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if results_dir_override:
         base = PROJECT_ROOT / results_dir_override / (model or mode)
@@ -46,6 +47,10 @@ def save_results(metrics: dict, mode: str, model: str = None,
     meta = {"mode": mode, "timestamp": timestamp, "model": model, **kwargs}
     with open(run_dir / "metrics.json", "w") as f:
         json.dump({"meta": meta, "metrics": serializable}, f, indent=2)
+
+    if console_log:
+        with open(run_dir / "console.log", "w") as f:
+            f.write(console_log)
 
     # ── Standard plots ───────────────────────────────────────────────────────
     cm = metrics.get("confusion_matrix")

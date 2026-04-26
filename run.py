@@ -17,11 +17,31 @@ Usage:
 """
 
 import argparse
+import io
+import sys
 
 from src.utils.config import load_variant, PROJECT_ROOT
 from src.utils.device import get_device
 from src.utils.results import save_results
 from src.data.prepare import prepare_data
+
+
+class _Tee:
+    """Write to both stdout and a StringIO buffer."""
+    def __init__(self, original):
+        self.original = original
+        self.buffer = io.StringIO()
+
+    def write(self, msg):
+        self.original.write(msg)
+        self.buffer.write(msg)
+
+    def flush(self):
+        self.original.flush()
+        self.buffer.flush()
+
+    def getvalue(self):
+        return self.buffer.getvalue()
 
 
 def run_tab(prep, tune: bool = False, n_trials: int = 50):
@@ -118,7 +138,11 @@ def main():
     parser.add_argument("--results-dir", type=str, default=None,
                         help="Override results directory (e.g. results/tuning)")
 
-    args   = parser.parse_args()
+    args = parser.parse_args()
+
+    tee = _Tee(sys.stdout)
+    sys.stdout = tee
+
     config = load_variant("v1")
 
     # Select edge feature set for GNNs
@@ -144,7 +168,11 @@ def main():
     elif args.mode == "het":
         results = run_het(prep, config, model_name=args.model, **model_kwargs)
 
-    save_kwargs = {"model": args.model if args.mode != "tab" else None}
+    console_log = tee.getvalue()
+    sys.stdout = tee.original
+
+    save_kwargs = {"model": args.model if args.mode != "tab" else None,
+                   "console_log": console_log}
     if args.results_dir:
         save_kwargs["results_dir_override"] = args.results_dir
     if args.mode == "het":
