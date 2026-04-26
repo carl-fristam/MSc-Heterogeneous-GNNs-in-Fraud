@@ -1,6 +1,9 @@
 """
 Hyperparameter tuning grid for all three GNN architectures.
 
+Runs default config for each model first (so you get a baseline for all three
+quickly), then iterates through the remaining grid.
+
 Results go to results/tuning/<model>/
 Killed runs are logged to results/tuning/killed.log
 
@@ -23,7 +26,16 @@ HIDDEN_DIMS = [32, 64, 128]
 NUM_LAYERS = [2, 3]
 LRS = [1e-3, 5e-4]
 
-grid = list(product(MODELS, HIDDEN_DIMS, NUM_LAYERS, LRS))
+DEFAULT = (64, 2, 1e-3)
+
+# Build grid: defaults first (one per model), then the rest
+grid = []
+for model in MODELS:
+    grid.append((model, *DEFAULT))
+for model, hd, nl, lr in product(MODELS, HIDDEN_DIMS, NUM_LAYERS, LRS):
+    if (hd, nl, lr) != DEFAULT:
+        grid.append((model, hd, nl, lr))
+
 total = len(grid)
 killed = 0
 

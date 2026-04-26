@@ -85,16 +85,21 @@ def prepare_data(config: dict, df_train=None, df_val=None, df_test=None,
 def _stratified_temporal_sample(df: pd.DataFrame, frac: float,
                                  label_col: str, time_col: str) -> pd.DataFrame:
     """
-    Sample a fraction of rows, preserving monthly distribution and fraud ratio.
-    Groups by (month, label), samples frac from each group.
+    Downsample legitimate transactions while keeping ALL fraud transactions.
+    Legitimate rows are sampled per month to preserve temporal distribution.
     """
-    dt = pd.to_datetime(df[time_col])
+    fraud = df[df[label_col] == True]
+    legit = df[df[label_col] == False]
+
+    dt = pd.to_datetime(legit[time_col])
     month = dt.dt.to_period("M")
 
-    sampled = df.groupby([month, df[label_col]], group_keys=False).apply(
+    legit_sampled = legit.groupby(month, group_keys=False).apply(
         lambda g: g.sample(frac=frac, random_state=42) if len(g) > 1
-                  else g  # keep single-row groups (rare fraud months)
+                  else g
     )
+
+    sampled = pd.concat([fraud, legit_sampled], ignore_index=True)
     sampled = sampled.sort_values(time_col).reset_index(drop=True)
     return sampled
 
