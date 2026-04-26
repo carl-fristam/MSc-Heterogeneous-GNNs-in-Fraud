@@ -39,7 +39,7 @@ for i, (model, hd, nl, lr) in enumerate(grid, 1):
     print("=" * 50)
 
     cmd = [
-        sys.executable, "run.py",
+        sys.executable, "-u", "run.py",
         "--mode", "het",
         "--model", model,
         "--sample", str(SAMPLE),
