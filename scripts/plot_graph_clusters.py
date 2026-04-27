@@ -1,13 +1,12 @@
 """
 Visualise the transaction graph structure.
 
-Extracts the largest connected component (capped for readability) and
-plots it on a dark canvas with fraud edges highlighted in red.
+Builds the graph from sampled data and plots a dense subgraph
+with fraud edges highlighted.
 
 Usage:
-    python scripts/plot_graph_clusters.py
-    python scripts/plot_graph_clusters.py --sample 0.05 --max-nodes 800
-    python scripts/plot_graph_clusters.py --out figures/graph_structure.png
+    PYTHONPATH=. python scripts/plot_graph_clusters.py
+    PYTHONPATH=. python scripts/plot_graph_clusters.py --sample 0.1 --max-nodes 500
 """
 
 import argparse
@@ -24,13 +23,11 @@ from src.utils.config import load_variant
 from src.data.prepare import prepare_data
 
 
-BG_COLOR = "#ffffff"
-
 COLORS = {
     "internal_account": "#2563eb",
     "external_account": "#f59e0b",
     "fraud_edge":       "#dc2626",
-    "legit_edge":       "#c4cdd8",
+    "legit_edge":       "#94a3b8",
 }
 
 
@@ -58,17 +55,22 @@ def build_nx_graph(df, col_cfg):
     return G
 
 
-def largest_component(G, max_nodes=600):
+def dense_subgraph(G, max_nodes=500, min_nodes=100):
+    """Pick the largest connected component, BFS-trim if needed."""
     undirected = G.to_undirected()
     components = sorted(nx.connected_components(undirected),
                         key=len, reverse=True)
 
-    for comp in components:
-        if len(comp) <= max_nodes:
-            return G.subgraph(comp).copy()
-
+    # Take the largest component
     comp = components[0]
-    sg = G.subgraph(comp)
+    sg = G.subgraph(comp).copy()
+    print(f"  Largest component: {sg.number_of_nodes()} nodes, "
+          f"{sg.number_of_edges()} edges")
+
+    if sg.number_of_nodes() <= max_nodes:
+        return sg
+
+    # BFS from highest-degree node to cap size
     start = max(sg.nodes(), key=lambda n: sg.degree(n))
     bfs_nodes = []
     for node in nx.bfs_tree(sg.to_undirected(), start):
@@ -79,17 +81,31 @@ def largest_component(G, max_nodes=600):
 
 
 def plot_graph(sg, out_path):
-    fig, ax = plt.subplots(figsize=(12, 14))
+    fig, ax = plt.subplots(figsize=(14, 12))
     ax.axis("off")
-    ax.set_facecolor(BG_COLOR)
-    fig.patch.set_facecolor(BG_COLOR)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
 
     # Betweenness centrality for node sizing
+    print("  Computing centrality...")
     bc = nx.betweenness_centrality(sg.to_undirected())
-    MIN_SIZE, MAX_SIZE = 5, 300
 
-    pos = nx.spring_layout(sg, k=0.12 / max(1, np.sqrt(sg.number_of_nodes())),
-                           iterations=250, seed=42, scale=1.0)
+    # Use degree as fallback influence on size too
+    deg = dict(sg.degree())
+    deg_max = max(deg.values()) if deg else 1
+
+    MIN_SIZE, MAX_SIZE = 20, 500
+    bc_max = max(bc.values()) if max(bc.values()) > 0 else 1e-9
+
+    def node_size(n):
+        bc_norm = (bc.get(n, 0) / bc_max) ** 0.4
+        deg_norm = (deg.get(n, 1) / deg_max) ** 0.5
+        combined = 0.5 * bc_norm + 0.5 * deg_norm
+        return MIN_SIZE + (MAX_SIZE - MIN_SIZE) * combined
+
+    # Tight spring layout
+    pos = nx.spring_layout(sg, k=2.0 / max(1, np.sqrt(sg.number_of_nodes())),
+                           iterations=300, seed=42)
 
     # Separate edges
     legit_edges = [(u, v) for u, v in sg.edges()
@@ -97,64 +113,59 @@ def plot_graph(sg, out_path):
     fraud_edges = [(u, v) for u, v in sg.edges()
                    if sg.edges[u, v].get("fraud", False)]
 
-    # Draw legit edges — thin, dark
+    # Draw legit edges
     nx.draw_networkx_edges(sg, pos, edgelist=legit_edges, ax=ax,
                            edge_color=COLORS["legit_edge"],
-                           width=0.3, alpha=0.4,
-                           arrows=False,
-                           node_size=MIN_SIZE)
+                           width=0.4, alpha=0.3,
+                           arrows=False, node_size=MIN_SIZE)
 
-    # Draw fraud edges — brighter, on top
+    # Draw fraud edges on top
     nx.draw_networkx_edges(sg, pos, edgelist=fraud_edges, ax=ax,
                            edge_color=COLORS["fraud_edge"],
-                           width=1.0, alpha=0.85,
-                           arrows=False,
-                           node_size=MIN_SIZE)
+                           width=1.2, alpha=0.8,
+                           arrows=False, node_size=MIN_SIZE)
 
-    # Nodes sized by centrality
+    # Nodes by type
     internal = [n for n in sg.nodes()
                 if sg.nodes[n].get("node_type") == "internal_account"]
     external = [n for n in sg.nodes()
                 if sg.nodes[n].get("node_type") == "external_account"]
 
-    bc_max = max(bc.values()) if bc.values() else 1e-9
-
-    def node_sizes(nodelist):
-        return [MIN_SIZE + (MAX_SIZE - MIN_SIZE) * (bc.get(n, 0) / bc_max) ** 0.4
-                for n in nodelist]
+    int_sizes = [node_size(n) for n in internal]
+    ext_sizes = [node_size(n) for n in external]
 
     nx.draw_networkx_nodes(sg, pos, nodelist=internal, ax=ax,
                            node_color=COLORS["internal_account"],
-                           node_size=node_sizes(internal),
-                           alpha=0.85, linewidths=0.3,
-                           edgecolors="white")
+                           node_size=int_sizes,
+                           alpha=0.8, linewidths=0.4,
+                           edgecolors="#1e40af")
 
     nx.draw_networkx_nodes(sg, pos, nodelist=external, ax=ax,
                            node_color=COLORS["external_account"],
-                           node_size=node_sizes(external),
-                           alpha=0.85, linewidths=0.3,
-                           edgecolors="white")
+                           node_size=ext_sizes,
+                           alpha=0.8, linewidths=0.4,
+                           edgecolors="#b45309")
 
-    # Legend — bottom, matching dark theme
+    # Legend
     legend_handles = [
         mlines.Line2D([], [], marker="o", color="none",
                       markerfacecolor=COLORS["internal_account"],
-                      markersize=8, label="Internal Account"),
+                      markeredgecolor="#1e40af",
+                      markersize=10, label="Internal Account"),
         mlines.Line2D([], [], marker="o", color="none",
                       markerfacecolor=COLORS["external_account"],
-                      markersize=8, label="External Account"),
+                      markeredgecolor="#b45309",
+                      markersize=10, label="External Account"),
         mlines.Line2D([], [], color=COLORS["fraud_edge"],
                       linewidth=2, label="Fraud"),
         mlines.Line2D([], [], color=COLORS["legit_edge"],
-                      linewidth=1.5, alpha=0.6, label="Legitimate"),
+                      linewidth=1.5, alpha=0.5, label="Legitimate"),
     ]
 
-    leg = ax.legend(handles=legend_handles, loc="lower center",
-                    bbox_to_anchor=(0.5, -0.02), ncol=4,
-                    fontsize=11, frameon=False,
-                    handletextpad=0.4, columnspacing=1.5)
-    for text in leg.get_texts():
-        text.set_color("black")
+    ax.legend(handles=legend_handles, loc="lower center",
+              bbox_to_anchor=(0.5, -0.02), ncol=4,
+              fontsize=12, frameon=False,
+              handletextpad=0.5, columnspacing=2.0)
 
     n_int = len(internal)
     n_ext = len(external)
@@ -163,19 +174,21 @@ def plot_graph(sg, out_path):
     print(f"  Plotted: {n_int} internal + {n_ext} external nodes, "
           f"{n_fraud} fraud + {n_legit} legit edges")
 
-    fig.tight_layout(pad=0.5)
+    # Pad tightly around actual content
+    ax.margins(0.05)
+    fig.tight_layout(pad=1.0)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=250, bbox_inches="tight",
-                facecolor=BG_COLOR, edgecolor="none")
+                facecolor="white", edgecolor="none")
     plt.close(fig)
     print(f"Saved: {out_path}")
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sample", type=float, default=0.05,
-                        help="Sample fraction (default 0.05)")
-    parser.add_argument("--max-nodes", type=int, default=600,
+    parser.add_argument("--sample", type=float, default=0.1,
+                        help="Sample fraction (default 0.1)")
+    parser.add_argument("--max-nodes", type=int, default=500,
                         help="Max nodes in the plotted component")
     parser.add_argument("--out", type=str,
                         default="figures/graph_structure.png")
@@ -192,8 +205,8 @@ def main():
     print(f"  Full graph: {G.number_of_nodes():,} nodes, "
           f"{G.number_of_edges():,} edges")
 
-    print(f"Extracting component (max {args.max_nodes} nodes)...")
-    sg = largest_component(G, max_nodes=args.max_nodes)
+    print(f"Extracting dense subgraph (max {args.max_nodes} nodes)...")
+    sg = dense_subgraph(G, max_nodes=args.max_nodes)
 
     print("Plotting...")
     plot_graph(sg, args.out)
