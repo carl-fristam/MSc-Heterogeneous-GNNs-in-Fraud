@@ -59,6 +59,8 @@ def save_results(metrics: dict, mode: str, model: str = None,
                                run_dir, display_name)
 
     if y_true is not None and y_prob is not None:
+        np.save(run_dir / "y_true.npy", np.asarray(y_true))
+        np.save(run_dir / "y_prob.npy", np.asarray(y_prob))
         _plot_pr_curve(np.asarray(y_true), np.asarray(y_prob),
                        run_dir, display_name)
 
