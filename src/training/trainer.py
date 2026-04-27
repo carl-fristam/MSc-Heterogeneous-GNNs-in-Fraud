@@ -14,7 +14,7 @@ Usage:
 """
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import torch
@@ -44,17 +44,25 @@ class TrainConfig:
     dropout: float = 0.3
     no_class_weight: bool = False
     target_node_type: str = "internal_account"
+    mini_batch: bool = False
+    batch_size: int = 2048
+    num_neighbors: list = field(default_factory=lambda: [10, 5])
 
 
 class Trainer:
     def __init__(self, model: nn.Module, data, config: TrainConfig, device: torch.device):
-        self.model = model.to(device)
-        self.data = data.to(device)
         self.config = config
         self.device = device
 
-        # Resolve labels and masks based on task + graph type
-        self._resolve_targets()
+        if config.mini_batch:
+            self.model = model.to(device)
+            self.data = data  # keep on CPU
+            self._resolve_targets_cpu()
+            self._setup_loaders()
+        else:
+            self.model = model.to(device)
+            self.data = data.to(device)
+            self._resolve_targets()
 
     def _resolve_targets(self):
         cfg = self.config
@@ -103,6 +111,111 @@ class Trainer:
                 self.test_mask = torch.cat(tests)
                 self.amounts = torch.cat(amounts) if amounts else None
 
+    def _resolve_targets_cpu(self):
+        """Like _resolve_targets but keeps everything on CPU for mini-batch mode."""
+        data = self.data
+        ys, trains, vals, tests, amounts = [], [], [], [], []
+        self.edge_type_slices = {}
+        offset = 0
+        for et in data.edge_types:
+            if hasattr(data[et], "y") and data[et].y is not None:
+                n = data[et].y.shape[0]
+                ys.append(data[et].y)
+                trains.append(data[et].train_mask)
+                vals.append(data[et].val_mask)
+                tests.append(data[et].test_mask)
+                if hasattr(data[et], "amounts") and data[et].amounts is not None:
+                    amounts.append(data[et].amounts)
+                self.edge_type_slices[et] = (offset, offset + n)
+                offset += n
+        self.y = torch.cat(ys)
+        self.train_mask = torch.cat(trains)
+        self.val_mask = torch.cat(vals)
+        self.test_mask = torch.cat(tests)
+        self.amounts = torch.cat(amounts) if amounts else None
+
+    def _setup_loaders(self):
+        """Create LinkNeighborLoader for each labeled edge type."""
+        from torch_geometric.loader import LinkNeighborLoader
+
+        cfg = self.config
+        self.train_loaders = []
+
+        for et in self.data.edge_types:
+            if not (hasattr(self.data[et], "y") and self.data[et].y is not None):
+                continue
+            train_idx = self.data[et].train_mask.nonzero(as_tuple=True)[0]
+            loader = LinkNeighborLoader(
+                self.data,
+                num_neighbors=cfg.num_neighbors,
+                edge_label_index=(et, self.data[et].edge_index[:, train_idx]),
+                edge_label=self.data[et].y[train_idx],
+                batch_size=cfg.batch_size,
+                shuffle=True,
+            )
+            self.train_loaders.append((et, loader))
+
+        n_batches = sum(len(loader) for _, loader in self.train_loaders)
+        print(f"Mini-batch training: {n_batches} batches/epoch, "
+              f"batch_size={cfg.batch_size}, neighbors={cfg.num_neighbors}")
+
+    def _train_epoch_mini_batch(self, criterion, optimizer):
+        """One epoch of mini-batch training across all labeled edge types."""
+        self.model.train()
+        total_loss = 0.0
+        n_batches = 0
+
+        for et, loader in self.train_loaders:
+            src_type, _, dst_type = et
+            for batch in loader:
+                batch = batch.to(self.device)
+                optimizer.zero_grad()
+
+                x_dict = self.model(batch)
+
+                edge_label_index = batch[et].edge_label_index
+                src_emb = x_dict[src_type][edge_label_index[0]]
+                dst_emb = x_dict[dst_type][edge_label_index[1]]
+                parts = [src_emb, dst_emb]
+                if hasattr(batch[et], "edge_label_attr") and batch[et].edge_label_attr is not None:
+                    parts.append(batch[et].edge_label_attr)
+                elif hasattr(batch[et], "edge_attr") and batch[et].edge_attr is not None:
+                    n_label = edge_label_index.shape[1]
+                    parts.append(batch[et].edge_attr[:n_label])
+                edge_emb = torch.cat(parts, dim=1)
+                logits = self.model.classifier(edge_emb).squeeze(-1)
+
+                loss = criterion(logits, batch[et].edge_label)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                optimizer.step()
+
+                total_loss += loss.item()
+                n_batches += 1
+
+        return total_loss / max(n_batches, 1)
+
+    def _full_inference_cpu(self):
+        """Move model to CPU, run full forward pass, move back to GPU."""
+        self.model.cpu()
+        self.model.eval()
+        with torch.no_grad():
+            x_dict = self.model(self.data)
+            logits_list = []
+            for et, (start, end) in self.edge_type_slices.items():
+                src_type, _, dst_type = et
+                edge_index = self.data[et].edge_index
+                src_emb = x_dict[src_type][edge_index[0]]
+                dst_emb = x_dict[dst_type][edge_index[1]]
+                parts = [src_emb, dst_emb]
+                if hasattr(self.data[et], "edge_attr") and self.data[et].edge_attr is not None:
+                    parts.append(self.data[et].edge_attr)
+                edge_emb = torch.cat(parts, dim=1)
+                logits_list.append(self.model.classifier(edge_emb).squeeze(-1))
+            logits = torch.cat(logits_list)
+        self.model.to(self.device)
+        return logits
+
     def _compute_edge_logits_hetero(self, x_dict):
         """Score all labelled edges by concatenating src + dst embeddings + edge features."""
         logits_list = []
@@ -141,9 +254,11 @@ class Trainer:
         if not cfg.no_class_weight:
             weights = compute_class_weights(train_labels)
             pos_weight = weights[1] / weights[0] if len(weights) > 1 else torch.tensor(1.0)
+            self._pos_weight = pos_weight
             criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight.to(self.device))
             print(f"Class weights: pos_weight={pos_weight:.2f}")
         else:
+            self._pos_weight = None
             criterion = nn.BCEWithLogitsLoss()
 
         optimizer = torch.optim.AdamW(
@@ -159,25 +274,27 @@ class Trainer:
         cnt_wait = 0
 
         for epoch in range(1, cfg.epochs + 1):
-            self.model.train()
-            optimizer.zero_grad()
+            if cfg.mini_batch:
+                epoch_loss = self._train_epoch_mini_batch(criterion, optimizer)
+            else:
+                self.model.train()
+                optimizer.zero_grad()
+                logits = self._forward()
+                epoch_loss = criterion(logits[self.train_mask], self.y[self.train_mask])
+                epoch_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                optimizer.step()
+                epoch_loss = epoch_loss.item()
 
-            logits = self._forward()
-            loss = criterion(logits[self.train_mask], self.y[self.train_mask])
-
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-            optimizer.step()
             if scheduler:
                 scheduler.step()
 
-            # Validation (recompute logits under eval mode — dropout must be off)
             if epoch % 5 == 0 or epoch == 1:
                 val_metrics = self._evaluate(criterion)
 
                 print(
                     f"Epoch {epoch:3d} | "
-                    f"Train loss: {loss.item():.4f} | "
+                    f"Train loss: {epoch_loss:.4f} | "
                     f"Val loss: {val_metrics['loss']:.4f} | "
                     f"Val AUROC: {val_metrics['auroc']:.4f} | "
                     f"Val AUPRC: {val_metrics['auprc']:.4f}"
@@ -189,7 +306,6 @@ class Trainer:
                     cnt_wait = 0
                 else:
                     cnt_wait += 1
-                    # patience is in validation-check units (checks run every 5 epochs)
                     if cnt_wait >= cfg.patience:
                         print(f"Early stopping at epoch {epoch} (patience={cfg.patience} checks = {cfg.patience * 5} epochs)")
                         break
@@ -205,10 +321,19 @@ class Trainer:
         self.model.eval()
         with torch.no_grad():
             if logits is None:
-                logits = self._forward()
-            val_probs = torch.sigmoid(logits[self.val_mask]).cpu().numpy()
-            val_labels = self.y[self.val_mask].cpu().numpy()
-            val_loss = criterion(logits[self.val_mask], self.y[self.val_mask]).item()
+                if self.config.mini_batch:
+                    logits = self._full_inference_cpu()
+                else:
+                    logits = self._forward()
+            val_logits = logits[self.val_mask]
+            val_y = self.y[self.val_mask]
+            if val_logits.device != val_y.device:
+                val_y = val_y.to(val_logits.device)
+            cpu_criterion = nn.BCEWithLogitsLoss(
+                pos_weight=self._pos_weight) if self._pos_weight is not None else nn.BCEWithLogitsLoss()
+            val_loss = cpu_criterion(val_logits, val_y).item()
+            val_probs = torch.sigmoid(val_logits).cpu().numpy()
+            val_labels = val_y.cpu().numpy()
 
         if val_labels.sum() > 0:
             auroc = roc_auc_score(val_labels, val_probs)
@@ -222,7 +347,10 @@ class Trainer:
         """Final test evaluation with val-optimised threshold."""
         self.model.eval()
         with torch.no_grad():
-            logits = self._forward()
+            if self.config.mini_batch:
+                logits = self._full_inference_cpu()
+            else:
+                logits = self._forward()
 
             # Optimise threshold on validation set
             val_probs = torch.sigmoid(logits[self.val_mask]).cpu().numpy()

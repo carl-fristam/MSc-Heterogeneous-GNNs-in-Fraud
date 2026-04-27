@@ -55,7 +55,10 @@ def run_het(prep, config, model_name="hgt", **kwargs):
 
     device           = get_device()
     target_node_type = "internal_account"
-    data             = build_graph(config, prep)["data"].to(device)
+    mini_batch       = kwargs.get("mini_batch", False)
+    data             = build_graph(config, prep)["data"]
+    if not mini_batch:
+        data = data.to(device)
 
     if model_name == "hgt":
         from src.heterogeneous.hgt.model import HGT
@@ -101,6 +104,8 @@ def run_het(prep, config, model_name="hgt", **kwargs):
         epochs           = kwargs.get("epochs",   200),
         lr               = kwargs.get("lr",       1e-3),
         patience         = kwargs.get("patience", 15),
+        mini_batch       = mini_batch,
+        batch_size       = kwargs.get("batch_size", 2048),
     ), device)
 
     return trainer.run()
@@ -134,6 +139,11 @@ def main():
     parser.add_argument("--lr",          type=float, default=1e-3)
     parser.add_argument("--patience",    type=int,   default=15)
 
+    # Mini-batch training
+    parser.add_argument("--mini-batch",  action="store_true",
+                        help="Use mini-batch training (fits full dataset in memory)")
+    parser.add_argument("--batch-size",  type=int, default=2048)
+
     # Output
     parser.add_argument("--results-dir", type=str, default=None,
                         help="Override results directory (e.g. results/tuning)")
@@ -155,12 +165,14 @@ def main():
     prep = prepare_data(config, sample=args.sample)
 
     model_kwargs = {
-        "hidden_dim": args.hidden_dim,
-        "num_layers": args.num_layers,
-        "num_heads":  args.num_heads,
-        "epochs":     args.epochs,
-        "lr":         args.lr,
-        "patience":   args.patience,
+        "hidden_dim":  args.hidden_dim,
+        "num_layers":  args.num_layers,
+        "num_heads":   args.num_heads,
+        "epochs":      args.epochs,
+        "lr":          args.lr,
+        "patience":    args.patience,
+        "mini_batch":  args.mini_batch,
+        "batch_size":  args.batch_size,
     }
 
     if args.mode == "tab":
