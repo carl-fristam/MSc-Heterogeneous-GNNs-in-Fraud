@@ -27,6 +27,7 @@ for i, model in enumerate(MODELS, 1):
         "--mode", "het",
         "--model", model,
         "--sample", str(SAMPLE),
+        "--proportional-sample",
         "--hidden-dim", "64",
         "--num-layers", "2",
         "--lr", "1e-3",

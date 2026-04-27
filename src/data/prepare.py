@@ -33,16 +33,17 @@ class PreparedData:
 
 
 def prepare_data(config: dict, df_train=None, df_val=None, df_test=None,
-                 sample: float = None) -> PreparedData:
+                 sample: float = None, keep_all_fraud: bool = True) -> PreparedData:
     """
     Build PreparedData from three pre-split DataFrames.
 
     Args:
-        config:    full config dict
-        df_train:  optional — pass DataFrames directly (e.g. from notebook)
-        df_val:    optional
-        df_test:   optional
-        sample:    optional — fraction to sample (stratified by month + label)
+        config:         full config dict
+        df_train:       optional — pass DataFrames directly (e.g. from notebook)
+        df_val:         optional
+        df_test:        optional
+        sample:         optional — fraction to sample
+        keep_all_fraud: if True, only downsample legitimate transactions
     """
     col_cfg = config["columns"]
 
@@ -52,9 +53,9 @@ def prepare_data(config: dict, df_train=None, df_val=None, df_test=None,
     if sample is not None and sample < 1.0:
         label_col = col_cfg["label"]
         time_col = col_cfg.get("timestamp", "EVENTTIME")
-        df_train = _stratified_temporal_sample(df_train, sample, label_col, time_col)
-        df_val   = _stratified_temporal_sample(df_val,   sample, label_col, time_col)
-        df_test  = _stratified_temporal_sample(df_test,  sample, label_col, time_col)
+        df_train = _stratified_temporal_sample(df_train, sample, label_col, time_col, keep_all_fraud)
+        df_val   = _stratified_temporal_sample(df_val,   sample, label_col, time_col, keep_all_fraud)
+        df_test  = _stratified_temporal_sample(df_test,  sample, label_col, time_col, keep_all_fraud)
 
     n_train, n_val, n_test = len(df_train), len(df_val), len(df_test)
     df = pd.concat([df_train, df_val, df_test], ignore_index=True)
@@ -83,23 +84,30 @@ def prepare_data(config: dict, df_train=None, df_val=None, df_test=None,
 
 
 def _stratified_temporal_sample(df: pd.DataFrame, frac: float,
-                                 label_col: str, time_col: str) -> pd.DataFrame:
+                                 label_col: str, time_col: str,
+                                 keep_all_fraud: bool = True) -> pd.DataFrame:
     """
-    Downsample legitimate transactions while keeping ALL fraud transactions.
-    Legitimate rows are sampled per month to preserve temporal distribution.
+    Downsample transactions preserving temporal distribution.
+    If keep_all_fraud=True, only legitimate transactions are sampled.
+    If keep_all_fraud=False, both classes are sampled proportionally.
     """
-    fraud = df[df[label_col] == True]
-    legit = df[df[label_col] == False]
-
-    dt = pd.to_datetime(legit[time_col])
-    month = dt.dt.to_period("M")
-
-    legit_sampled = legit.groupby(month, group_keys=False).apply(
-        lambda g: g.sample(frac=frac, random_state=42) if len(g) > 1
-                  else g
-    )
-
-    sampled = pd.concat([fraud, legit_sampled], ignore_index=True)
+    if keep_all_fraud:
+        fraud = df[df[label_col] == True]
+        legit = df[df[label_col] == False]
+        dt = pd.to_datetime(legit[time_col])
+        month = dt.dt.to_period("M")
+        legit_sampled = legit.groupby(month, group_keys=False).apply(
+            lambda g: g.sample(frac=frac, random_state=42) if len(g) > 1
+                      else g
+        )
+        sampled = pd.concat([fraud, legit_sampled], ignore_index=True)
+    else:
+        dt = pd.to_datetime(df[time_col])
+        month = dt.dt.to_period("M")
+        sampled = df.groupby([month, df[label_col]], group_keys=False).apply(
+            lambda g: g.sample(frac=frac, random_state=42) if len(g) > 1
+                      else g
+        )
     sampled = sampled.sort_values(time_col).reset_index(drop=True)
     return sampled
 

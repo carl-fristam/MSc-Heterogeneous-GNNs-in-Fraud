@@ -55,10 +55,7 @@ def run_het(prep, config, model_name="hgt", **kwargs):
 
     device           = get_device()
     target_node_type = "internal_account"
-    mini_batch       = kwargs.get("mini_batch", False)
-    data             = build_graph(config, prep)["data"]
-    if not mini_batch:
-        data = data.to(device)
+    data             = build_graph(config, prep)["data"].to(device)
 
     if model_name == "hgt":
         from src.heterogeneous.hgt.model import HGT
@@ -104,8 +101,6 @@ def run_het(prep, config, model_name="hgt", **kwargs):
         epochs           = kwargs.get("epochs",   200),
         lr               = kwargs.get("lr",       1e-3),
         patience         = kwargs.get("patience", 15),
-        mini_batch       = mini_batch,
-        batch_size       = kwargs.get("batch_size", 2048),
     ), device)
 
     return trainer.run()
@@ -124,6 +119,8 @@ def main():
     # Data
     parser.add_argument("--sample", type=float, default=None,
                         help="Stratified temporal sample fraction (e.g. 0.5)")
+    parser.add_argument("--proportional-sample", action="store_true",
+                        help="Sample fraud proportionally too (default: keep all fraud)")
     parser.add_argument("--full-features", action="store_true",
                         help="Use all 91 edge features instead of lean 30 (GNN only)")
 
@@ -138,11 +135,6 @@ def main():
     parser.add_argument("--epochs",      type=int,   default=200)
     parser.add_argument("--lr",          type=float, default=1e-3)
     parser.add_argument("--patience",    type=int,   default=15)
-
-    # Mini-batch training
-    parser.add_argument("--mini-batch",  action="store_true",
-                        help="Use mini-batch training (fits full dataset in memory)")
-    parser.add_argument("--batch-size",  type=int, default=2048)
 
     # Output
     parser.add_argument("--results-dir", type=str, default=None,
@@ -162,7 +154,8 @@ def main():
     else:
         print(f"\nEdge features: LEAN ({len(config['edge_features'])} dims)")
 
-    prep = prepare_data(config, sample=args.sample)
+    prep = prepare_data(config, sample=args.sample,
+                        keep_all_fraud=not args.proportional_sample)
 
     model_kwargs = {
         "hidden_dim":  args.hidden_dim,
@@ -171,8 +164,6 @@ def main():
         "epochs":      args.epochs,
         "lr":          args.lr,
         "patience":    args.patience,
-        "mini_batch":  args.mini_batch,
-        "batch_size":  args.batch_size,
     }
 
     if args.mode == "tab":
