@@ -1,17 +1,17 @@
 """
-Run all three GNN models with default params to get a quick baseline.
+Run all three GNN models with default params.
+50% sample with proportional fraud (~7.5k fraud transactions).
 
 Usage:
-    python scripts/run_defaults.py
+    python scripts/run_defaults_50pct_proportional.py
 """
 
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 SAMPLE = 0.5
-RESULTS_DIR = "results/defaults"
+RESULTS_DIR = "results/defaults_proportional"
 
 MODELS = ["hgt", "hmpnn", "hetero_gat"]
 
@@ -42,5 +42,5 @@ for i, model in enumerate(MODELS, 1):
         print(f"FAILED: {model} (exit code {result.returncode})")
 
 print(f"\n{'=' * 50}")
-print("DONE — results in results/defaults/")
+print(f"DONE — results in {RESULTS_DIR}/")
 print("=" * 50)
