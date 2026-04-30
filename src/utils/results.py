@@ -28,7 +28,7 @@ def save_results(metrics: dict, mode: str, model: str = None,
                  y_true=None, y_prob=None,
                  xgb_model=None, feature_names=None,
                  analysis=None, results_dir_override=None,
-                 console_log=None, **kwargs):
+                 console_log=None, model_state=None, **kwargs):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if results_dir_override:
         base = PROJECT_ROOT / results_dir_override / (model or mode)
@@ -51,6 +51,10 @@ def save_results(metrics: dict, mode: str, model: str = None,
     if console_log:
         with open(run_dir / "console.log", "w") as f:
             f.write(console_log)
+
+    if model_state is not None:
+        import torch
+        torch.save(model_state, run_dir / "model_state.pt")
 
     # ── Standard plots ───────────────────────────────────────────────────────
     cm = metrics.get("confusion_matrix")

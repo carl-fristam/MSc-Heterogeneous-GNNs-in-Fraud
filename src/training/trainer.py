@@ -194,6 +194,8 @@ class Trainer:
         if best_state is not None:
             self.model.load_state_dict(best_state)
 
+        self._best_state = best_state
+
         return self._test()
 
     def _evaluate(self, criterion, logits=None):

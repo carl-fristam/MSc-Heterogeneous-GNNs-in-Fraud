@@ -103,7 +103,10 @@ def run_het(prep, config, model_name="hgt", **kwargs):
         patience         = kwargs.get("patience", 15),
     ), device)
 
-    return trainer.run()
+    metrics = trainer.run()
+    if trainer._best_state is not None:
+        metrics["_model_state"] = trainer._best_state
+    return metrics
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -191,7 +194,7 @@ def main():
 
 def _save(metrics: dict, mode: str, **kwargs):
     extra = {}
-    for key in ("_y_true", "_y_prob", "_xgb_model", "_feature_names", "_analysis"):
+    for key in ("_y_true", "_y_prob", "_xgb_model", "_feature_names", "_analysis", "_model_state"):
         if key in metrics:
             extra[key.lstrip("_")] = metrics.pop(key)
     save_results(metrics, mode, **extra, **kwargs)

@@ -2,14 +2,16 @@
 Plot overlaid PR curves for all models.
 
 Scans a results directory for y_true.npy / y_prob.npy pairs and plots them
-on a single figure.
+on a single figure. Uses the 2-layer run for GNNs if both 1L and 2L exist.
+Produces two variants: one with dashed XGBoost line, one with all solid.
 
 Usage:
-    python scripts/plot_pr_comparison.py results/defaults
-    python scripts/plot_pr_comparison.py results/defaults --out figures/pr_comparison.png
+    PYTHONPATH=. python scripts/plot_pr_comparison.py results/defaults
+    PYTHONPATH=. python scripts/plot_pr_comparison.py results/defaults --out figures/pr_comparison.png
 """
 
 import argparse
+import json
 from pathlib import Path
 
 import numpy as np
@@ -19,28 +21,43 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve, average_precision_score
 
 COLORS = {
-    "xgboost": "#1e293b",
-    "hgt":     "#2563eb",
-    "hmpnn":   "#dc2626",
-    "hetero_gat": "#16a34a",
+    "xgboost":    "#1b1b1b",
+    "hgt":        "#4e79a7",
+    "hmpnn":      "#f28e2b",
+    "hetero_gat": "#76b7b2",
 }
 
 LABELS = {
-    "xgboost": "XGBoost",
-    "hgt": "HGT",
-    "hmpnn": "HMPNN",
+    "xgboost":    "XGBoost",
+    "hgt":        "HGT",
+    "hmpnn":      "HMPNN",
     "hetero_gat": "HeteroGAT",
+}
+
+MARKERS = {
+    "xgboost":    "^",
+    "hgt":        "o",
+    "hmpnn":      "D",
+    "hetero_gat": "s",
 }
 
 
 def find_runs(base: Path) -> dict:
-    """Find the most recent run with y_true.npy for each model."""
+    """Find the most recent 2-layer (or default) run per model."""
     runs = {}
     for npy in sorted(base.rglob("y_true.npy")):
         run_dir = npy.parent
         model_key = _infer_model(run_dir)
-        if model_key:
+        if model_key is None:
+            continue
+
+        n_layers = _get_num_layers(run_dir)
+        existing = runs.get(model_key)
+        if existing is None:
             runs[model_key] = run_dir
+        elif model_key != "xgboost" and n_layers == 2:
+            runs[model_key] = run_dir
+
     return runs
 
 
@@ -50,16 +67,32 @@ def _infer_model(run_dir: Path) -> str | None:
         if key in name:
             return key
     parent = run_dir.parent.name.lower()
-    for key in ("hgt", "hmpnn", "hetero_gat", "xgboost", "tabular"):
+    for key in ("hgt", "hmpnn", "hetero_gat", "xgboost"):
         if key in parent:
-            return "xgboost" if key == "tabular" else key
+            return key
+    if parent in ("tab", "tabular"):
+        return "xgboost"
     return None
 
 
-def plot(runs: dict, out_path: Path):
-    fig, ax = plt.subplots(figsize=(8, 6))
+def _get_num_layers(run_dir: Path) -> int | None:
+    metrics_file = run_dir / "metrics.json"
+    if not metrics_file.exists():
+        return None
+    with open(metrics_file) as f:
+        saved = json.load(f)
+    return saved.get("meta", {}).get("hyperparams", {}).get("num_layers")
 
-    for model_key in ["xgboost", "hgt", "hmpnn", "hetero_gat"]:
+
+def plot(runs: dict, out_path: Path, dashed_baseline: bool = False):
+    fig, ax = plt.subplots(figsize=(6, 5.5))
+
+    ax.set_facecolor("white")
+    fig.patch.set_facecolor("white")
+
+    order = ["xgboost", "hgt", "hmpnn", "hetero_gat"]
+
+    for model_key in order:
         if model_key not in runs:
             continue
         run_dir = runs[model_key]
@@ -69,21 +102,29 @@ def plot(runs: dict, out_path: Path):
         precision, recall, _ = precision_recall_curve(y_true, y_prob)
         auprc = average_precision_score(y_true, y_prob)
 
-        label = f"{LABELS.get(model_key, model_key)}  (PR-AUC = {auprc:.4f})"
-        color = COLORS.get(model_key, "#6b7280")
-        ax.plot(recall, precision, linewidth=2, color=color, label=label)
+        label = f"{LABELS[model_key]}  (PR-AUC = {auprc:.4f})"
+        color = COLORS[model_key]
+        ls = "--" if (dashed_baseline and model_key == "xgboost") else "-"
 
-    ax.set_xlabel("Recall", fontsize=13)
-    ax.set_ylabel("Precision", fontsize=13)
-    ax.set_title("Precision–Recall Curves", fontsize=14, pad=12)
+        ax.plot(recall, precision, linewidth=1.3, color=color,
+                linestyle=ls, label=label, alpha=0.9)
+
+    ax.set_xlabel("Recall", fontsize=12, labelpad=8)
+    ax.set_ylabel("Precision", fontsize=12, labelpad=8)
     ax.set_xlim([0, 1])
-    ax.set_ylim([0, 1])
-    ax.legend(fontsize=11, loc="upper right")
-    ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    ax.set_ylim([0, 1.05])
+    ax.tick_params(labelsize=11)
+    ax.legend(fontsize=10, loc="upper right", framealpha=0.95,
+              edgecolor="#cccccc", fancybox=False)
+    ax.grid(True, alpha=0.2, linewidth=0.5)
 
+    for spine in ax.spines.values():
+        spine.set_color("#cccccc")
+        spine.set_linewidth(0.6)
+
+    fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=200)
+    fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     print(f"Saved: {out_path}")
 
@@ -105,8 +146,11 @@ def main():
 
     print(f"Found runs: {', '.join(f'{k} ({v.name})' for k, v in runs.items())}")
 
-    out = Path(args.out) if args.out else base / "pr_comparison.png"
-    plot(runs, out)
+    out_stem = Path(args.out) if args.out else base / "pr_comparison.png"
+    out_dashed = out_stem.with_name(out_stem.stem + "_dashed" + out_stem.suffix)
+
+    plot(runs, out_stem, dashed_baseline=False)
+    plot(runs, out_dashed, dashed_baseline=True)
 
 
 if __name__ == "__main__":

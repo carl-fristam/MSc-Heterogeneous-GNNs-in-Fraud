@@ -118,3 +118,49 @@ class HeteroGAT(nn.Module):
             return self.classifier(x_dict[self.target_node_type]).squeeze(-1)
         else:
             return x_dict
+
+    @torch.no_grad()
+    def extract_attention(self, data):
+        """Extract per-edge-type attention weights from all layers."""
+        self.eval()
+        x_dict = {
+            nt: self.dropout(torch.relu(self.input_proj[nt](data[nt].x)))
+            for nt in data.node_types
+        }
+
+        edge_attr_dict = {
+            et: data[et].edge_attr
+            for et in data.edge_types
+            if hasattr(data[et], "edge_attr") and data[et].edge_attr is not None
+        }
+
+        all_attention = {}
+
+        for layer_idx, (conv, norm_dict) in enumerate(zip(self.convs, self.norms)):
+            layer_attn = {}
+
+            for et in data.edge_types:
+                gat = conv.convs[et]
+                src_type, _, dst_type = et
+
+                src_x = x_dict[src_type]
+                dst_x = x_dict[dst_type]
+                edge_index = data[et].edge_index
+                edge_attr = edge_attr_dict.get(et, None)
+
+                _, (ei, alpha) = gat(
+                    (src_x, dst_x), edge_index,
+                    edge_attr=edge_attr,
+                    return_attention_weights=True,
+                )
+                layer_attn[et] = alpha.cpu()
+
+            all_attention[layer_idx] = layer_attn
+
+            x_dict = conv(x_dict, data.edge_index_dict, edge_attr_dict=edge_attr_dict)
+            x_dict = {
+                nt: self.dropout(torch.relu(norm_dict[nt](x)))
+                for nt, x in x_dict.items()
+            }
+
+        return all_attention

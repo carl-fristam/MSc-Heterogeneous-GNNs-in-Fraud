@@ -13,6 +13,9 @@ Usage:
 
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import pandas as pd
 
 from src.utils.config import load_variant, PROJECT_ROOT
@@ -35,6 +38,45 @@ def stratified_temporal_sample(df, frac, label_col, time_col):
     sampled = pd.concat([fraud, legit_sampled], ignore_index=True)
     sampled = sampled.sort_values(time_col).reset_index(drop=True)
     return sampled
+
+
+def plot_monthly_distribution(df, label_col, time_col):
+    dt = pd.to_datetime(df[time_col])
+    month = dt.dt.to_period("M")
+
+    total_per_month = month.value_counts().sort_index()
+    fraud_per_month = month[df[label_col] == True].value_counts().sort_index()
+    fraud_per_month = fraud_per_month.reindex(total_per_month.index, fill_value=0)
+
+    labels = [str(m) for m in total_per_month.index]
+
+    fig, ax1 = plt.subplots(figsize=(12, 5))
+
+    ax1.plot(labels, total_per_month.values, color="#2563eb", linewidth=2,
+             marker="o", markersize=5, label="Total transactions")
+    ax1.set_ylabel("Total transactions", fontsize=12, color="#2563eb")
+    ax1.tick_params(axis="y", labelcolor="#2563eb")
+
+    ax2 = ax1.twinx()
+    ax2.plot(labels, fraud_per_month.values, color="#dc2626", linewidth=2,
+             marker="s", markersize=5, label="Fraud transactions")
+    ax2.set_ylabel("Fraud transactions", fontsize=12, color="#dc2626")
+    ax2.tick_params(axis="y", labelcolor="#dc2626")
+
+    ax1.set_xlabel("Month", fontsize=12)
+    ax1.set_title("Monthly Transaction and Fraud Distribution", fontsize=14, pad=12)
+    plt.xticks(rotation=45, ha="right")
+    ax1.grid(True, alpha=0.3)
+
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=11)
+
+    fig.tight_layout()
+    out_path = OUTPUT_DIR / "monthly_distribution.png"
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"\nPlot saved to {out_path.relative_to(PROJECT_ROOT)}")
 
 
 def main():
@@ -82,6 +124,9 @@ def main():
     combined_path = OUTPUT_DIR / "combined.parquet"
     combined.to_parquet(combined_path, index=False)
     print(f"\nCombined: {len(combined):,} rows  |  saved to {combined_path.relative_to(PROJECT_ROOT)}")
+
+    # Monthly distribution plot
+    plot_monthly_distribution(combined, label_col, time_col)
 
     print(f"\nDone — splits saved to {OUTPUT_DIR.relative_to(PROJECT_ROOT)}/")
 
