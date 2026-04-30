@@ -70,22 +70,22 @@ def find_top_fraud_edges(model, data, edge_type_slices, test_mask, y, top_k=5):
     with torch.no_grad():
         x_dict = model(data)
 
-    all_logits = []
-    for et, (start, end) in edge_type_slices.items():
-        src_type, _, dst_type = et
-        edge_index = data[et].edge_index
-        src_emb = x_dict[src_type][edge_index[0]]
-        dst_emb = x_dict[dst_type][edge_index[1]]
-        parts = [src_emb, dst_emb]
-        if hasattr(data[et], "edge_attr") and data[et].edge_attr is not None:
-            parts.append(data[et].edge_attr)
-        edge_emb = torch.cat(parts, dim=1)
-        all_logits.append(model.classifier(edge_emb).squeeze(-1))
-    logits = torch.cat(all_logits)
-    probs = torch.sigmoid(logits).cpu().numpy()
+        all_logits = []
+        for et, (start, end) in edge_type_slices.items():
+            src_type, _, dst_type = et
+            edge_index = data[et].edge_index
+            src_emb = x_dict[src_type][edge_index[0]]
+            dst_emb = x_dict[dst_type][edge_index[1]]
+            parts = [src_emb, dst_emb]
+            if hasattr(data[et], "edge_attr") and data[et].edge_attr is not None:
+                parts.append(data[et].edge_attr)
+            edge_emb = torch.cat(parts, dim=1)
+            all_logits.append(model.classifier(edge_emb).squeeze(-1))
+        logits = torch.cat(all_logits)
+        probs = torch.sigmoid(logits).cpu().detach().numpy()
 
-    test_idx = test_mask.cpu().numpy().astype(bool)
-    labels = y.cpu().numpy()
+    test_idx = test_mask.cpu().detach().numpy().astype(bool)
+    labels = y.cpu().detach().numpy()
 
     # Fraud edges in test set
     fraud_test = test_idx & (labels == 1)
