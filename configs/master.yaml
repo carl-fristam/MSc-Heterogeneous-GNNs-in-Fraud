@@ -45,7 +45,7 @@ columns:
 #   full           — 91 features including velocity/novelty (--full-features)
 #                    use for ablation: does adding engineered features help GNNs?
 #
-# XGBoost always sees ALL numeric columns regardless of this setting.
+# XGBoost uses lean by default; pass --full-features for the full set.
 
 edge_features_lean:
   # amount

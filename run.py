@@ -44,9 +44,11 @@ class _Tee:
         return self.buffer.getvalue()
 
 
-def run_tab(prep, tune: bool = False, n_trials: int = 50):
+def run_tab(prep, tune: bool = False, n_trials: int = 50,
+            feature_cols: list[str] | None = None):
     from src.baselines.tabular import run_tabular_baselines
-    return run_tabular_baselines(prep, tune=tune, n_trials=n_trials)
+    return run_tabular_baselines(prep, tune=tune, n_trials=n_trials,
+                                 feature_cols=feature_cols)
 
 
 def run_het(prep, config, model_name="hgt", **kwargs):
@@ -170,7 +172,9 @@ def main():
     }
 
     if args.mode == "tab":
-        results = run_tab(prep, tune=args.tune, n_trials=args.n_trials)
+        feature_cols = config["edge_features"] if args.full_features else None
+        results = run_tab(prep, tune=args.tune, n_trials=args.n_trials,
+                          feature_cols=feature_cols)
     elif args.mode == "het":
         results = run_het(prep, config, model_name=args.model, **model_kwargs)
 

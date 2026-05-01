@@ -27,25 +27,35 @@ from src.data.prepare import PreparedData
 from src.utils.threshold_table import print_threshold_table
 
 
-def _tabular_X(prep: PreparedData) -> tuple[np.ndarray, list[str]]:
+def _tabular_X(prep: PreparedData,
+               feature_cols: list[str] | None = None) -> tuple[np.ndarray, list[str]]:
     """
-    All numeric columns from the dataframe, minus identifiers/label/timestamp.
+    Build the feature matrix for tabular models.
+
+    If *feature_cols* is given, use exactly those columns (must be present in df).
+    Otherwise fall back to all numeric columns minus identifiers/label/timestamp.
     Returns (feature_matrix, feature_names).
     """
-    col_cfg = prep.col_cfg
-    exclude = {
-        col_cfg.get("label"),
-        col_cfg.get("sender"),
-        col_cfg.get("receiver"),
-        col_cfg.get("timestamp"),
-        col_cfg.get("transaction_id"),
-        col_cfg.get("customer_id"),
-        "COUNTERBRANCHID",
-        "_sender", "_receiver",
-    }
-    exclude.discard(None)
-    num_cols = [c for c in prep.df.columns
-                if c not in exclude and pd.api.types.is_numeric_dtype(prep.df[c])]
+    if feature_cols is not None:
+        missing = [c for c in feature_cols if c not in prep.df.columns]
+        if missing:
+            raise KeyError(f"Feature columns not found in dataframe: {missing}")
+        num_cols = feature_cols
+    else:
+        col_cfg = prep.col_cfg
+        exclude = {
+            col_cfg.get("label"),
+            col_cfg.get("sender"),
+            col_cfg.get("receiver"),
+            col_cfg.get("timestamp"),
+            col_cfg.get("transaction_id"),
+            col_cfg.get("customer_id"),
+            "COUNTERBRANCHID",
+            "_sender", "_receiver",
+        }
+        exclude.discard(None)
+        num_cols = [c for c in prep.df.columns
+                    if c not in exclude and pd.api.types.is_numeric_dtype(prep.df[c])]
     return prep.df[num_cols].fillna(0).values.astype(np.float32), num_cols
 
 # Hyperparameter search space for Bayesian optimisation
@@ -106,7 +116,8 @@ def run_logistic_regression(prep: PreparedData) -> dict:
     return _evaluate(y[test_m], y_prob, y_pred, "Logistic Regression")
 
 
-def run_xgboost(prep: PreparedData) -> dict:
+def run_xgboost(prep: PreparedData,
+                feature_cols: list[str] | None = None) -> dict:
     """Train and evaluate XGBoost on transaction features."""
     try:
         from xgboost import XGBClassifier
@@ -114,7 +125,7 @@ def run_xgboost(prep: PreparedData) -> dict:
         print("xgboost not installed. Run: pip install xgboost")
         return {}
 
-    (X, feat_names), y = _tabular_X(prep), prep.labels
+    (X, feat_names), y = _tabular_X(prep, feature_cols), prep.labels
     train_m = prep.train_mask.values
     val_m = prep.val_mask.values
     test_m = prep.test_mask.values
@@ -137,6 +148,10 @@ def run_xgboost(prep: PreparedData) -> dict:
 
     # Find optimal threshold on validation set
     y_val_prob = model.predict_proba(X[val_m])[:, 1]
+    val_auprc = average_precision_score(y[val_m], y_val_prob)
+    val_auroc = roc_auc_score(y[val_m], y_val_prob)
+    print(f"  Val AUPRC: {val_auprc:.4f}")
+    print(f"  Val AUROC: {val_auroc:.4f}")
     best_t, best_f1 = 0.5, 0.0
     for t in np.arange(0.05, 0.95, 0.01):
         f1 = f1_score(y[val_m], (y_val_prob >= t).astype(int), zero_division=0)
@@ -164,7 +179,8 @@ def run_xgboost(prep: PreparedData) -> dict:
     return metrics
 
 
-def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50) -> dict:
+def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50,
+                      feature_cols: list[str] | None = None) -> dict:
     """
     XGBoost with Bayesian hyperparameter optimisation via optuna.
 
@@ -178,7 +194,7 @@ def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50) -> dict:
         print(f"Missing dependency: {e}. Run: pip install optuna xgboost")
         return {}
 
-    (X, feat_names), y = _tabular_X(prep), prep.labels
+    (X, feat_names), y = _tabular_X(prep, feature_cols), prep.labels
     train_m = prep.train_mask.values
     val_m   = prep.val_mask.values
     test_m  = prep.test_mask.values
@@ -230,6 +246,10 @@ def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50) -> dict:
 
     # Threshold optimisation on val
     y_val_prob = final_model.predict_proba(X[val_m])[:, 1]
+    val_auprc = average_precision_score(y[val_m], y_val_prob)
+    val_auroc = roc_auc_score(y[val_m], y_val_prob)
+    print(f"  Val AUPRC: {val_auprc:.4f}")
+    print(f"  Val AUROC: {val_auroc:.4f}")
     best_t, best_f1 = 0.5, 0.0
     for t in np.arange(0.05, 0.95, 0.01):
         f1 = f1_score(y[val_m], (y_val_prob >= t).astype(int), zero_division=0)
@@ -257,8 +277,9 @@ def run_xgboost_bayes(prep: PreparedData, n_trials: int = 50) -> dict:
 
 
 def run_tabular_baselines(prep: PreparedData, tune: bool = False,
-                          n_trials: int = 50) -> list[dict]:
+                          n_trials: int = 50,
+                          feature_cols: list[str] | None = None) -> list[dict]:
     """Run tabular baselines. Pass tune=True to use Bayesian optimisation for XGBoost."""
     if tune:
-        return [run_xgboost_bayes(prep, n_trials=n_trials)]
-    return [run_xgboost(prep)]
+        return [run_xgboost_bayes(prep, n_trials=n_trials, feature_cols=feature_cols)]
+    return [run_xgboost(prep, feature_cols=feature_cols)]
