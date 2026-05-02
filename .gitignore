@@ -59,6 +59,15 @@ mlruns/
 *.toc
 paper/build/
 
+# --- NOT PART OF CORE METHODOLOGY ---
+scripts/                 # ad-hoc analysis and plotting scripts
+src/homogeneous/         # out of experimental scope
+compare.py
+discussion_draft.md
+PROJECT context.md
+CLAUDE.md
+*.pid
+
 # --- WORKING DOCS (may contain sensitive content) ---
 doc_workspace.md
 
