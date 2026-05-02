@@ -128,6 +128,8 @@ def main():
                         help="Sample fraud proportionally too (default: keep all fraud)")
     parser.add_argument("--full-features", action="store_true",
                         help="Use all 91 edge features instead of lean 30 (GNN only)")
+    parser.add_argument("--customer-nodes", action="store_true",
+                        help="Add customer nodes with owns/owned_by edges (GNN only)")
 
     # Tabular tuning
     parser.add_argument("--tune",     action="store_true")
@@ -159,6 +161,11 @@ def main():
     else:
         print(f"\nEdge features: LEAN ({len(config['edge_features'])} dims)")
 
+    # Customer nodes flag — propagated via col_cfg to node_builder
+    if args.customer_nodes:
+        config["columns"]["_build_customer_nodes"] = True
+        print("Customer nodes: ENABLED (owns/owned_by edges)")
+
     prep = prepare_data(config, sample=args.sample,
                         keep_all_fraud=not args.proportional_sample)
 
@@ -172,7 +179,7 @@ def main():
     }
 
     if args.mode == "tab":
-        feature_cols = config["edge_features"] if args.full_features else None
+        feature_cols = config["edge_features"]
         results = run_tab(prep, tune=args.tune, n_trials=args.n_trials,
                           feature_cols=feature_cols)
     elif args.mode == "het":
@@ -189,6 +196,7 @@ def main():
         save_kwargs["hyperparams"] = model_kwargs
         save_kwargs["sample"] = args.sample
         save_kwargs["full_features"] = args.full_features
+        save_kwargs["customer_nodes"] = args.customer_nodes
     if isinstance(results, list):
         for r in results:
             if r: _save(r, args.mode, **save_kwargs)

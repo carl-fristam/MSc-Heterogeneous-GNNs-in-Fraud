@@ -54,7 +54,8 @@ class HGT(nn.Module):
         edge_feat_dim = 0
         if task == "edge":
             for et in data.edge_types:
-                if hasattr(data[et], "edge_attr") and data[et].edge_attr is not None:
+                if hasattr(data[et], "y") and data[et].y is not None and \
+                   hasattr(data[et], "edge_attr") and data[et].edge_attr is not None:
                     edge_feat_dim = data[et].edge_attr.shape[1]
                     break
 

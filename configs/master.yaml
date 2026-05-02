@@ -208,6 +208,10 @@ node_features:
       - counterpartyid_te
       - COUNTERIDFORMAT_IBAN
 
+  customer:
+    id_col: CUSTOMERID
+    columns: []          # no pre-computed features; 1-dim constant used at graph build
+
 
 # ==============================================================================
 # VARIANTS — only the graph topology changes

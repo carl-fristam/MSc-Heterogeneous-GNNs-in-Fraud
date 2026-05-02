@@ -66,7 +66,17 @@ def build_node_maps(df: pd.DataFrame, col_cfg: dict) -> dict:
     print(f"  internal_account: {len(internal_map):,} nodes  ({promoted:,} added from on-us receivers)")
     print(f"  external_account: {len(external_map):,} nodes")
 
-    return {
+    node_maps = {
         "internal_account": internal_map,
         "external_account": external_map,
     }
+
+    # Customer nodes (only built when --customer-nodes is passed)
+    customer_col = col_cfg.get("customer_id")
+    if customer_col and col_cfg.get("_build_customer_nodes"):
+        customer_ids = sorted(df[customer_col].dropna().unique())
+        customer_map = {cid: idx for idx, cid in enumerate(customer_ids)}
+        node_maps["customer"] = customer_map
+        print(f"  customer:         {len(customer_map):,} nodes")
+
+    return node_maps

@@ -20,6 +20,7 @@ import os
 import pickle
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch_geometric.data import HeteroData
 
@@ -100,6 +101,38 @@ def build_graph(config: dict, prep) -> dict:
     data["external_account"].x         = external_features
     data["external_account"].num_nodes = len(node_maps["external_account"])
 
+    # --- Customer nodes (optional) ---
+    if "customer" in node_maps:
+        n_cust = len(node_maps["customer"])
+        data["customer"].x         = torch.ones(n_cust, 1, dtype=torch.float32)
+        data["customer"].num_nodes = n_cust
+
+        # Build owns / owned_by structural edges
+        cust_map = node_maps["customer"]
+        acct_map = node_maps["internal_account"]
+        cust_col = col_cfg["customer_id"]
+
+        # Unique (customer, account) pairs
+        pairs = df[[cust_col, "_sender"]].drop_duplicates()
+        pairs = pairs.dropna(subset=[cust_col])
+        cust_idx = pairs[cust_col].map(cust_map).values.astype("int64")
+        acct_idx = pairs["_sender"].map(acct_map)
+        valid = acct_idx.notna()
+        cust_idx = cust_idx[valid]
+        acct_idx = acct_idx[valid].values.astype("int64")
+
+        # owns: customer → internal_account
+        owns_ei = torch.tensor(np.stack([cust_idx, acct_idx]), dtype=torch.long)
+        data[("customer", "owns", "internal_account")].edge_index = owns_ei
+        data[("customer", "owns", "internal_account")].edge_attr = torch.ones(owns_ei.shape[1], 1, dtype=torch.float32)
+
+        # owned_by: internal_account → customer (reverse)
+        owned_ei = torch.tensor(np.stack([acct_idx, cust_idx]), dtype=torch.long)
+        data[("internal_account", "owned_by", "customer")].edge_index = owned_ei
+        data[("internal_account", "owned_by", "customer")].edge_attr = torch.ones(owned_ei.shape[1], 1, dtype=torch.float32)
+
+        print(f"\n  Structural edges: {owns_ei.shape[1]:,} owns + {owned_ei.shape[1]:,} owned_by")
+
     for b in bundles:
         et = b.edge_type
         data[et].edge_index = b.edge_index
@@ -131,6 +164,7 @@ def _cache_path(config: dict) -> str:
         "edges":          config["edges"]["relations"],
         "edge_features":  config["edge_features"],
         "node_features":  config["node_features"],
+        "customer_nodes": config.get("columns", {}).get("_build_customer_nodes", False),
     }, sort_keys=True)
 
     h = hashlib.md5(sig.encode()).hexdigest()[:8]
