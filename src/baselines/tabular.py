@@ -1,8 +1,4 @@
 """
-Tabular baselines: Logistic Regression and XGBoost on transaction features.
-
-No graph structure. Establishes the floor that graph-based models must beat.
-
 Usage:
     from src.data.prepare import prepare_data
     from src.baselines.tabular import run_tabular_baselines
@@ -95,26 +91,6 @@ def _evaluate(y_true, y_prob, y_pred, name: str) -> dict:
     print(f"  Confusion matrix:\n{metrics['confusion_matrix']}")
 
     return metrics
-
-
-def run_logistic_regression(prep: PreparedData) -> dict:
-    """Train and evaluate logistic regression on transaction features."""
-    (X, _), y = _tabular_X(prep), prep.labels
-    train_m, test_m = prep.train_mask.values, prep.test_mask.values
-
-    model = LogisticRegression(
-        class_weight="balanced",
-        max_iter=5000,
-        solver="saga",
-        n_jobs=-1,
-    )
-    model.fit(X[train_m], y[train_m])
-
-    y_prob = model.predict_proba(X[test_m])[:, 1]
-    y_pred = (y_prob >= 0.5).astype(int)
-
-    return _evaluate(y[test_m], y_prob, y_pred, "Logistic Regression")
-
 
 def run_xgboost(prep: PreparedData,
                 feature_cols: list[str] | None = None) -> dict:

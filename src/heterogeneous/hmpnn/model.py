@@ -1,48 +1,19 @@
-"""
-HMPNN — Heterogeneous Message Passing Neural Network.
+"""HMPNN: Johannessen & Jullum (2023), https://github.com/fredjo89/heterogeneous-mpnn
 
-Original:  Johannessen & Jullum (2023)
-           https://github.com/fredjo89/heterogeneous-mpnn
+Two aggregation variants are exposed:
+    "ct"  (default) one NNConv per relation, outputs concatenated and projected
+    "sum"           all relations summed via a single HeteroConv (ablation)
 
----------------------------------------------------------------------------
-What we kept from the original
----------------------------------------------------------------------------
-- Two aggregation variants:
-    CT  (default) — one NNConv per relation, messages concatenated across
-                    relations then projected. Their main model.
-    Sum           — all relations summed via a single HeteroConv. Ablation.
-- aggr="sum" within each relation via NNConv — matches the original exactly.
-- Sigmoid activations throughout each layer.
-- NNConv as the message function: edge features produce a weight matrix that
-  modulates the source node embedding (Gilmer et al., 2017).
+NNConv (Gilmer et al., 2017) is the per-relation message function: edge
+features produce a weight matrix that modulates the source embedding.
+Within each relation we keep the original's aggr="sum" and per-layer sigmoid.
 
----------------------------------------------------------------------------
-What we changed
----------------------------------------------------------------------------
-- Task: node classification → edge classification.
-  The HMPNN layers still run identically and produce node embeddings.
-  The Trainer then scores each transaction edge by concatenating
-  (src_emb, dst_emb) and passing through an MLP classifier head.
-
-- Forward signature: the original takes (x_dict, edge_index_dict,
-  edge_attr_dict) separately. Ours accepts a HeteroData object directly
-  and unpacks internally, matching the shared Trainer interface used by
-  HGT and HeteroGAT.
-
-- Classifier: self.classifier is an MLP on hidden_dim * 2 inputs for the
-  edge task, or a single Linear for the node task.
-
----------------------------------------------------------------------------
-Graph structure
----------------------------------------------------------------------------
-- Two node types: internal_account, external_account
-- V1: two edge types — onus_transfer (internal → internal),
-                        external_transfer (internal → external)
-- V2: five edge types — onus_transfer + four external types split by
-                        payment rail (realtime, giro, future, other)
-- Each edge carries transaction features (amount, channel, payment method,
-  currency, destination, time encoding).
-- Labels live on edges — each transaction is either fraud or not.
+Differences from the original:
+    - Edge classification instead of node classification. The layers still
+      produce node embeddings; the Trainer scores edges by concatenating
+      (src_emb, dst_emb, edge_attr) through an MLP head.
+    - `forward` takes a HeteroData object, matching the shared Trainer
+      interface used by HGT and HeteroGAT.
 """
 
 import torch
@@ -52,19 +23,12 @@ from torch_geometric.nn import NNConv, HeteroConv
 
 
 class HMPNNLayer(nn.Module):
-    """
-    One message-passing step across all node types.
+    """One message-passing step across all node types.
 
-    CT variant:
-        For each incoming relation, NNConv (aggr="sum") produces a
-        dim_message vector per destination node. Vectors from all
-        relations are concatenated, then a Linear projects to dim_out.
-        Matches models_HMPNN_ct.py from the original repo.
-
-    Sum variant:
-        All relations passed into one HeteroConv(aggr="sum"), producing
-        a single dim_message vector per node. Then projected to dim_out.
-        Matches models_HMPNN_sum.py — used as ablation.
+    "ct":  one NNConv per relation, dim_message vectors concatenated across
+           relations then projected to dim_out. Matches models_HMPNN_ct.py.
+    "sum": all relations passed through a single HeteroConv(aggr="sum")
+           and projected. Matches models_HMPNN_sum.py (ablation).
     """
 
     def __init__(self, data, dim_in: dict, dim_out: int, dim_message: int, aggr: str = "ct"):
@@ -166,18 +130,10 @@ class HMPNNLayerAnalysis:
 
 
 class HMPNN(nn.Module):
-    """
-    Full HMPNN: stacked HMPNNLayer instances + edge classification head.
+    """Stacked HMPNNLayer + edge classification head.
 
-    Args:
-        data:             HeteroData object.
-        target_node_type: node type whose embeddings feed the edge classifier.
-        num_layers:       number of message-passing layers.
-        hidden_dim:       node embedding dimension.
-        message_dim:      per-relation message size inside each layer.
-        dropout:          dropout applied between layers.
-        task:             "edge" (default) or "node".
-        aggr:             "ct" (concatenation, main model) or "sum" (ablation).
+    `aggr` selects the per-layer behaviour: "ct" is the paper's main model,
+    "sum" is the ablation that drops cross-relation concatenation.
     """
 
     def __init__(

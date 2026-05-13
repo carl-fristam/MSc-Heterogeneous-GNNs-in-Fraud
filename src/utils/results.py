@@ -98,8 +98,6 @@ def save_results(metrics: dict, mode: str, model: str = None,
 def _results_dir(mode: str, model: str = None) -> Path:
     if mode == "tab":
         return PROJECT_ROOT / "src" / "baselines" / "tabular" / "results"
-    elif mode == "homo":
-        return PROJECT_ROOT / "src" / "homogeneous" / (model or "unknown") / "results"
     elif mode == "het":
         return PROJECT_ROOT / "src" / "heterogeneous" / (model or "unknown") / "results"
     return PROJECT_ROOT / "results"

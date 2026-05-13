@@ -1,4 +1,4 @@
-# Heterogeneous Graph Neural Networks for Transaction-Level Fraud Detection at Danske Bank
+# Heterogeneous Graph Neural Networks for Transaction-Level Fraud Detection
 
 MSc in Data Science — Copenhagen Business School, 2026.
 
@@ -36,11 +36,13 @@ datasets/splits/
   test.parquet
 ```
 
-Each file contains one row per transaction with pre-computed features (OHE, target encodings, velocity features, cyclical time encodings), a binary label column (`CONFIRMEDRISK`), and account identifiers. The splits are temporal: training covers earlier months, validation and test cover successively later periods. This pre-processing and feature engineering was made in a separate pipeline on internal compute at DB, due to the sensitivity of the data.
+Each file contains one row per transaction with pre-computed features (OHE, target encodings, velocity features, cyclical time encodings), a binary label column (`CONFIRMEDRISK`), and account identifiers. The splits are temporal: training covers earlier months, validation and test cover successively later periods.
+
+Pre-processing and feature engineering happen in a separate notebook that in a de-classified state now lives in this repository.
 
 ## Usage
 
-The following commands were used to run the pipeline during testing. Ad-hoc scripts were made to orchestrate on the compute network within DB.
+The following commands were used to run the pipeline during testing. Ad-hoc scripts were used to orchestrate runs on the internal compute environment.
 
 ```bash
 # Tabular baseline (XGBoost, lean features)
@@ -56,9 +58,6 @@ python run.py --mode het --model hetero_gat
 
 # With customer nodes (adds owns/owned_by structural edges)
 python run.py --mode het --model hmpnn --customer-nodes
-
-# Downsample to 50% (keeps all fraud, samples legitimate transactions)
-python run.py --mode het --model hgt --sample 0.5
 ```
 
 ## Requirements

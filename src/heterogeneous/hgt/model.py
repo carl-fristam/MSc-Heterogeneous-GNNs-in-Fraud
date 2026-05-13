@@ -1,10 +1,8 @@
-"""
-Heterogeneous Graph Transformer (HGT) for fraud classification.
+"""HGT (Hu et al., 2020) wrapped around PyG's HGTConv.
 
-Supports both node classification (labels on transaction nodes) and
-edge classification (labels on edges between account nodes).
-
-Uses PyG's HGTConv with per-type input projections.
+Each node type gets its own input projection. For edge classification
+the model returns the per-type embedding dict and the Trainer scores
+edges by concatenating src/dst embeddings with the raw edge features.
 """
 
 import torch
@@ -13,17 +11,11 @@ from torch_geometric.nn import HGTConv
 
 
 class HGT(nn.Module):
-    """
-    Args:
-        data: HeteroData object (used to infer metadata and feature dims)
-        hidden_dim: hidden dimension for all layers
-        num_heads: number of attention heads per HGTConv layer
-        num_layers: number of HGTConv layers
-        dropout: dropout rate
-        task: "node" or "edge"
-            - "node": classify a target node type (e.g. "transaction")
-            - "edge": classify edges by concatenating src + dst node embeddings
-        target_node_type: which node type to classify (node mode only)
+    """HGT backbone + classifier head.
+
+    Pass a HeteroData; the model uses it once to infer node/edge metadata
+    and per-type feature dims. `task="edge"` returns the embedding dict;
+    `task="node"` returns logits for `target_node_type`.
     """
 
     def __init__(self, data, hidden_dim=64, num_heads=4, num_layers=2,

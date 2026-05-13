@@ -1,16 +1,11 @@
-# ==============================================================================
-# MASTER CONFIG — single source of truth for all experiment variants
+#MASTER CONFIG — single source of truth for all experiment variants
 #
-# Shared settings (data, columns, split, features) are defined once at the top.
-# Each variant only specifies what differs: graph topology (nodes + edges).
 #
-# All feature engineering, encoding, and scaling is done externally.
-# This repo only does graph construction and model training.
+# All feature engineering, encoding, and scaling is done in the notebook (.ipynb file)
 #
-# Usage:
+# Example usage:
 #   python run.py --mode tab
 #   python run.py --mode het --model hgt
-# ==============================================================================
 
 
 # ── Data ─────────────────────────────────────────────────────────────────────
@@ -210,16 +205,12 @@ node_features:
 
   customer:
     id_col: CUSTOMERID
-    columns: []          # no pre-computed features; 1-dim constant used at graph build
+    columns: []
 
 
-# ==============================================================================
 # VARIANTS — only the graph topology changes
-# ==============================================================================
 
 variants:
-
-  # ── V1: Baseline — onus vs external (2 edge types) ────────────────────────
   v1:
     nodes: [internal_account, external_account]
     edges:

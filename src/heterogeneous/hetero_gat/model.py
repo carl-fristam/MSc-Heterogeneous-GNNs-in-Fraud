@@ -1,21 +1,9 @@
-"""
-Heterogeneous GAT (HeteroGAT) for edge classification.
+"""Per-relation GAT stack: a separate GATConv per edge type, aggregated
+at the node with HeteroConv. Lighter than HGT — no cross-type attention,
+just type-aware message passing with edge-feature-conditioned weights.
 
-Uses PyG's HeteroConv to apply a separate GATConv per edge type,
-then aggregates messages at each node. This preserves edge-type
-identity during message passing but uses simpler per-type attention
-rather than HGT's cross-type transformer attention.
-
-Contrast with HGT:
-  HGT     — cross-type attention, type-specific K/Q/V projections
-  HeteroGAT — per-type GAT, aggregated at nodes, type-aware but lighter
-
-Both support the same Trainer interface (forward takes HeteroData,
-returns x_dict for edge mode or logits for node mode).
-
-Usage:
-    from src.heterogeneous.hetero_gat.model import HeteroGAT
-    model = HeteroGAT(data, hidden_dim=64, num_heads=4, num_layers=2)
+Same forward contract as HGT: HeteroData in, embedding dict out (edge task)
+or logits out (node task).
 """
 
 import torch
@@ -24,15 +12,10 @@ from torch_geometric.nn import HeteroConv, GATConv
 
 
 class HeteroGAT(nn.Module):
-    """
-    Args:
-        data:             HeteroData (used to infer metadata and feature dims)
-        hidden_dim:       node embedding dimension
-        num_heads:        GAT attention heads per layer
-        num_layers:       number of HeteroConv layers
-        dropout:          dropout rate
-        task:             "node" or "edge"
-        target_node_type: node type to classify (node task only)
+    """HeteroConv(GATConv per edge type) + classifier head.
+
+    Edge features are passed to GATConv via `edge_dim` so attention is
+    conditioned on the transaction features, not just node embeddings.
     """
 
     def __init__(self, data, hidden_dim=64, num_heads=4, num_layers=2,

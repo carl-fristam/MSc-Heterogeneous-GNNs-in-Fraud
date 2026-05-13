@@ -97,12 +97,11 @@ def run_het(prep, config, model_name="hgt", **kwargs):
         raise ValueError(f"Unknown het model: {model_name!r}. Choose hgt | hmpnn | hetero_gat")
 
     trainer = Trainer(model, data, TrainConfig(
-        task             = "edge",
-        graph_type       = "hetero",
-        target_node_type = target_node_type,
-        epochs           = kwargs.get("epochs",   200),
-        lr               = kwargs.get("lr",       1e-3),
-        patience         = kwargs.get("patience", 15),
+        task=             "edge",
+        target_node_type= target_node_type,
+        epochs=           kwargs.get("epochs",   200),
+        lr=               kwargs.get("lr",       1e-3),
+        patience=         kwargs.get("patience", 15),
     ), device)
 
     metrics = trainer.run()

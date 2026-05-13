@@ -1,16 +1,7 @@
-"""
-Unified training loop for all GNN models (homo and het).
+"""Shared training loop for HGT, HMPNN and HeteroGAT.
 
-Supports:
-  - Homogeneous edge classification (GCN, GraphSAGE, GAT on projected Data)
-  - Heterogeneous edge classification (HGT, HMPNN, HeteroGAT on HeteroData)
-
-Usage:
-    from src.training.trainer import Trainer, TrainConfig
-
-    cfg = TrainConfig(task="node", epochs=200, lr=1e-3)
-    trainer = Trainer(model, data, cfg, device)
-    metrics = trainer.run()
+Handles edge or node classification on a PyG HeteroData object. Edge labels
+are concatenated across edge types so a single BCE loss can be applied.
 """
 
 from copy import deepcopy
@@ -35,7 +26,6 @@ from src.utils.threshold_table import print_threshold_table
 @dataclass
 class TrainConfig:
     task: str = "edge"          # "node" or "edge"
-    graph_type: str = "hetero"  # "hetero" or "homo"
     epochs: int = 200
     lr: float = 1e-3
     weight_decay: float = 1e-4
@@ -59,48 +49,35 @@ class Trainer:
         cfg = self.config
         data = self.data
 
-        if cfg.graph_type == "homo":
-            if cfg.task == "node":
-                self.y = data.y
-                self.train_mask = data.train_mask
-                self.val_mask = data.val_mask
-                self.test_mask = data.test_mask
-                self.amounts = None
-            else:
-                self.y = data.edge_y
-                self.train_mask = data.edge_train_mask
-                self.val_mask = data.edge_val_mask
-                self.test_mask = data.edge_test_mask
-                self.amounts = getattr(data, "amounts", None)
-        else:
-            if cfg.task == "node":
-                nt = cfg.target_node_type
-                self.y = data[nt].y
-                self.train_mask = data[nt].train_mask
-                self.val_mask = data[nt].val_mask
-                self.test_mask = data[nt].test_mask
-                self.amounts = None
-            else:
-                ys, trains, vals, tests, amounts = [], [], [], [], []
-                self.edge_type_slices = {}
-                offset = 0
-                for et in data.edge_types:
-                    if hasattr(data[et], "y") and data[et].y is not None:
-                        n = data[et].y.shape[0]
-                        ys.append(data[et].y)
-                        trains.append(data[et].train_mask)
-                        vals.append(data[et].val_mask)
-                        tests.append(data[et].test_mask)
-                        if hasattr(data[et], "amounts") and data[et].amounts is not None:
-                            amounts.append(data[et].amounts)
-                        self.edge_type_slices[et] = (offset, offset + n)
-                        offset += n
+        if cfg.task == "node":
+            nt = cfg.target_node_type
+            self.y = data[nt].y
+            self.train_mask = data[nt].train_mask
+            self.val_mask = data[nt].val_mask
+            self.test_mask = data[nt].test_mask
+            self.amounts = None
+            return
 
-                self.y = torch.cat(ys)
-                self.train_mask = torch.cat(trains)
-                self.val_mask = torch.cat(vals)
-                self.test_mask = torch.cat(tests)
-                self.amounts = torch.cat(amounts) if amounts else None
+        ys, trains, vals, tests, amounts = [], [], [], [], []
+        self.edge_type_slices = {}
+        offset = 0
+        for et in data.edge_types:
+            if hasattr(data[et], "y") and data[et].y is not None:
+                n = data[et].y.shape[0]
+                ys.append(data[et].y)
+                trains.append(data[et].train_mask)
+                vals.append(data[et].val_mask)
+                tests.append(data[et].test_mask)
+                if hasattr(data[et], "amounts") and data[et].amounts is not None:
+                    amounts.append(data[et].amounts)
+                self.edge_type_slices[et] = (offset, offset + n)
+                offset += n
+
+        self.y = torch.cat(ys)
+        self.train_mask = torch.cat(trains)
+        self.val_mask = torch.cat(vals)
+        self.test_mask = torch.cat(tests)
+        self.amounts = torch.cat(amounts) if amounts else None
 
     def _compute_edge_logits_hetero(self, x_dict):
         """Score all labelled edges by concatenating src + dst embeddings + edge features."""
@@ -118,16 +95,10 @@ class Trainer:
         return torch.cat(logits_list)
 
     def _forward(self):
-        cfg = self.config
-
-        if cfg.graph_type == "homo":
+        if self.config.task == "node":
             return self.model(self.data)
-
-        if cfg.task == "node":
-            return self.model(self.data)
-        else:
-            x_dict = self.model(self.data)
-            return self._compute_edge_logits_hetero(x_dict)
+        x_dict = self.model(self.data)
+        return self._compute_edge_logits_hetero(x_dict)
 
     def run(self) -> dict:
         """Full train/val/test loop. Returns test metrics dict."""
@@ -258,14 +229,14 @@ class Trainer:
 
         amounts = self.amounts[self.test_mask].cpu().numpy() if self.amounts is not None else None
         metrics["threshold_table"] = print_threshold_table(
-            test_labels, test_probs, amounts=amounts, model_name=self.config.graph_type,
+            test_labels, test_probs, amounts=amounts,
+            model_name=type(self.model).__name__,
             optimal_threshold=best_t,
         )
         metrics["_y_true"] = test_labels
         metrics["_y_prob"] = test_probs
 
-        # ── Analysis data ────────────────────────────────────────────────────
-        if self.config.graph_type == "hetero" and self.config.task == "edge":
+        if self.config.task == "edge":
             analysis = {}
 
             # Node embeddings for t-SNE/UMAP

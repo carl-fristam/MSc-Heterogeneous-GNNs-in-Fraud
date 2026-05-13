@@ -4,9 +4,9 @@ account a unique integer index. This integer index is what the GNN uses
 internally — it never sees raw account ID strings.
 
 Two node types:
-    internal_account — Danske Bank accounts. These are always the senders.
+    internal_account — accounts held at the bank. These are always the senders.
                        Receivers of on-us transactions are also internal,
-                       because both sides of an on-us transfer are Danske accounts.
+                       because both sides of an on-us transfer are bank accounts.
 
     external_account — Counterparty accounts at other banks. These only
                        appear as receivers and never as senders in our data.
@@ -38,7 +38,7 @@ def build_node_maps(df: pd.DataFrame, col_cfg: dict) -> dict:
     onus_col = col_cfg["onus_flag"]  # TRANSACTIONONUS
 
     # --- Internal accounts ---
-    # Every sender is by definition an internal (Danske Bank) account
+    # Every sender is by definition an internal account
     sender_ids = set(df["_sender"].unique())
 
     # On-us transactions connect two internal accounts.
